@@ -1,0 +1,46 @@
+================================================================================
+BASELINE vs MCP-COORDINATED SWARM COMPARISON REPORT
+================================================================================
+
+Configuration:
+  - Episodes per run: 50
+  - Number of runs: 1
+  - Number of UAVs: 3
+  - Simulation time: 60.0s
+
+================================================================================
+PERFORMANCE METRICS
+================================================================================
+
+Coverage Performance:
+  Baseline Average: 1.35%
+  MCP Average: 1.12%
+  Improvement: -17.00%
+
+Battery Efficiency:
+  Baseline Average: 98.91
+  MCP Average: 99.08
+  Improvement: +0.17%
+
+Communication Reliability:
+  Baseline Average: 0.01
+  MCP Average: 0.00
+  Improvement: -100.00%
+
+================================================================================
+STATISTICAL SIGNIFICANCE
+================================================================================
+
+Coverage Improvement: -8.47%
+Statistical Significance: Not Significant
+T-statistic: 0.00
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+1. MCP-coordinated swarm achieves -17.0% better coverage
+2. Battery efficiency improved by +0.2%
+3. Communication reliability improved by -100.0%
+
+================================================================================

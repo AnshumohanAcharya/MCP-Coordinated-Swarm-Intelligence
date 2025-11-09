@@ -7,6 +7,9 @@ import time
 import signal
 import sys
 import os
+import socket
+import requests
+from pathlib import Path
 from loguru import logger
 
 
@@ -16,26 +19,103 @@ class SwarmDemo:
     def __init__(self):
         self.processes = []
         self.running = False
+        self.health_check_interval = 5.0  # seconds
+        self.max_startup_time = 30.0  # seconds
+    
+    def check_port_available(self, port: int) -> bool:
+        """Check if a port is available."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            result = sock.connect_ex(('localhost', port))
+            sock.close()
+            return result != 0  # Port is available if connection fails
+        except Exception:
+            return False
+    
+    def wait_for_service(self, url: str, timeout: float = 10.0, name: str = "Service") -> bool:
+        """Wait for a service to become available."""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                response = requests.get(url, timeout=1.0)
+                if response.status_code == 200:
+                    logger.info(f"{name} is ready")
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.5)
+        logger.warning(f"{name} did not become ready within {timeout}s")
+        return False
     
     def start_mcp_server(self):
-        """Start the MCP server."""
+        """Start the MCP server with health checks."""
         logger.info("Starting MCP server...")
+        
+        # Check if port is available
+        if not self.check_port_available(8765):
+            logger.warning("Port 8765 is already in use. MCP server may already be running.")
+        
         process = subprocess.Popen([
             sys.executable, "-m", "mcp_server.server"
         ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self.processes.append(("MCP Server", process))
-        time.sleep(2)  # Give server time to start
+        
+        # Wait for server to start
+        time.sleep(2)
+        
+        # Health check - try to connect to WebSocket port
+        # (Simplified check - in production, use proper WebSocket health check)
+        if process.poll() is None:
+            logger.info("MCP server process started")
+        else:
+            logger.error("MCP server process failed to start")
+            try:
+                stderr = process.stderr.read().decode('utf-8')
+                if stderr:
+                    logger.error(f"MCP server error: {stderr}")
+            except:
+                pass
     
     def start_web_dashboard(self):
-        """Start the web dashboard."""
+        """Start the web dashboard with health checks."""
         logger.info("Starting web dashboard...")
-        os.chdir("web_dashboard")
-        process = subprocess.Popen([
-            "npm", "start"
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.processes.append(("Web Dashboard", process))
-        os.chdir("..")
-        time.sleep(5)  # Give dashboard time to start
+        
+        # Check if port is available
+        if not self.check_port_available(3001):
+            logger.warning("Port 3001 is already in use. Dashboard may already be running.")
+        
+        dashboard_dir = Path("web_dashboard")
+        if not dashboard_dir.exists():
+            logger.error("web_dashboard directory not found!")
+            return
+        
+        original_dir = os.getcwd()
+        try:
+            os.chdir(dashboard_dir)
+            process = subprocess.Popen([
+                "npm", "start"
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.processes.append(("Web Dashboard", process))
+        finally:
+            os.chdir(original_dir)
+        
+        # Wait for dashboard to start
+        time.sleep(5)
+        
+        # Health check
+        if process.poll() is None:
+            logger.info("Web dashboard process started")
+            # Try to check if server is responding
+            if self.wait_for_service("http://localhost:3001/api/health", timeout=10.0, name="Web Dashboard"):
+                logger.info("Web dashboard is ready at http://localhost:3001")
+        else:
+            logger.error("Web dashboard process failed to start")
+            try:
+                stderr = process.stderr.read().decode('utf-8')
+                if stderr:
+                    logger.error(f"Dashboard error: {stderr[:500]}")  # Limit output
+            except:
+                pass
     
     def start_simulation(self, headless=False):
         """Start the simulation."""
@@ -90,7 +170,7 @@ class SwarmDemo:
                     try:
                         stderr_output = process.stderr.read().decode('utf-8')
                         if stderr_output:
-                            logger.error(f"{name} failed with return code {return_code}: {stderr_output}")
+                            logger.error(f"{name} failed with return code {return_code}: {stderr_output[:500]}")
                         else:
                             logger.error(f"{name} failed with return code {return_code}")
                     except:
@@ -101,6 +181,44 @@ class SwarmDemo:
         self.processes = active_processes
         return len(self.processes) > 0
     
+    def preflight_checks(self) -> bool:
+        """Run pre-flight checks before starting demo."""
+        logger.info("Running pre-flight checks...")
+        checks_passed = True
+        
+        # Check Python version
+        if sys.version_info < (3, 8):
+            logger.error(f"Python 3.8+ required, found {sys.version}")
+            checks_passed = False
+        
+        # Check required directories
+        required_dirs = ["simulation", "mcp_server", "rl_agents", "config"]
+        for dir_name in required_dirs:
+            if not Path(dir_name).exists():
+                logger.error(f"Required directory not found: {dir_name}")
+                checks_passed = False
+        
+        # Check if CSV file exists (optional but recommended)
+        csv_file = Path("Visakhapatnam_UTide_full2024_hourly_IST.csv")
+        if not csv_file.exists():
+            logger.warning(f"Tidal data file not found: {csv_file}. Tidal effects will be disabled.")
+        else:
+            logger.info("Tidal data file found")
+        
+        # Check ports
+        if not self.check_port_available(8765):
+            logger.warning("Port 8765 (MCP server) is in use")
+        
+        if not self.check_port_available(3001):
+            logger.warning("Port 3001 (Web dashboard) is in use")
+        
+        if checks_passed:
+            logger.info("Pre-flight checks passed")
+        else:
+            logger.error("Pre-flight checks failed")
+        
+        return checks_passed
+    
     def signal_handler(self, signum, frame):
         """Handle shutdown signals."""
         logger.info("Received shutdown signal")
@@ -110,6 +228,11 @@ class SwarmDemo:
     
     async def run_demo(self, demo_type="simulation", **kwargs):
         """Run the specified demo."""
+        # Run pre-flight checks
+        if not self.preflight_checks():
+            logger.error("Pre-flight checks failed. Please fix issues before running demo.")
+            return
+        
         # Setup signal handlers
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)

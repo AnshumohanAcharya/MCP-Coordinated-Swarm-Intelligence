@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import time
 
 from config.simulation_config import EnvironmentConfig
+from .tidal_data import get_tidal_loader
 
 
 @dataclass
@@ -102,9 +103,20 @@ class DisasterScenario:
         self.event_counter = 0
         
         # Environmental conditions
-        self.wind_speed = config.wind_conditions["speed"]
+        self.base_wind_speed = config.wind_conditions["speed"]
         self.wind_direction = config.wind_conditions["direction"]
+        self.wind_speed = self.base_wind_speed
         self.weather_conditions = "clear"
+        
+        # Tidal data integration
+        self.tidal_loader = None
+        self.simulation_start_time = time.time()
+        try:
+            self.tidal_loader = get_tidal_loader()
+            print("Tidal data loaded successfully")
+        except Exception as e:
+            print(f"Warning: Could not load tidal data: {e}")
+            self.tidal_loader = None
         
         # Coverage tracking
         grid_h = int(self.height // 10)
@@ -178,9 +190,22 @@ class DisasterScenario:
     
     def _update_environmental_conditions(self, dt: float):
         """Update environmental conditions."""
-        # Simulate wind changes
-        wind_change = random.uniform(-0.1, 0.1) * dt
-        self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
+        # Update based on tidal data if available
+        if self.tidal_loader is not None:
+            simulation_time = time.time() - self.simulation_start_time
+            tidal_conditions = self.tidal_loader.get_environmental_conditions(simulation_time)
+            
+            # Modify wind speed based on tidal pressure
+            wind_factor = tidal_conditions.get('wind_modification_factor', 1.0)
+            self.wind_speed = self.base_wind_speed * wind_factor
+            
+            # Add some random variation
+            wind_change = random.uniform(-0.05, 0.05) * dt
+            self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
+        else:
+            # Fallback to random wind changes
+            wind_change = random.uniform(-0.1, 0.1) * dt
+            self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
         
         # Simulate weather changes
         if random.random() < 0.0001 * dt:  # Very low probability
@@ -263,7 +288,7 @@ class DisasterScenario:
     
     def get_environmental_conditions(self) -> Dict[str, Any]:
         """Get current environmental conditions."""
-        return {
+        conditions = {
             "wind_speed": self.wind_speed,
             "wind_direction": self.wind_direction,
             "weather": self.weather_conditions,
@@ -271,6 +296,18 @@ class DisasterScenario:
             "humidity": 60.0,  # Simulated
             "visibility": 10.0 if self.weather_conditions == "clear" else 5.0
         }
+        
+        # Add tidal data if available
+        if self.tidal_loader is not None:
+            simulation_time = time.time() - self.simulation_start_time
+            tidal_conditions = self.tidal_loader.get_environmental_conditions(simulation_time)
+            conditions.update({
+                "tidal_pressure": tidal_conditions.get('tidal_pressure', 0.0),
+                "tidal_phase": tidal_conditions.get('tidal_phase', 'unknown'),
+                "wind_modification_factor": tidal_conditions.get('wind_modification_factor', 1.0)
+            })
+        
+        return conditions
     
     def get_priority_areas(self) -> List[Tuple[float, float, float, float, int]]:
         """Get all priority areas (disaster zones + target areas) with priorities."""

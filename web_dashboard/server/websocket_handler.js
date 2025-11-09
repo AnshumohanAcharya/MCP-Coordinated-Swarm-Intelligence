@@ -25,6 +25,21 @@ class WebSocketHandler {
       rewards: []
     };
     
+    // Dual simulation support for comparison
+    this.comparisonMode = false;
+    this.baselineSimulationData = {
+      uavs: [],
+      scenario: {},
+      performance: {},
+      timestamp: null
+    };
+    this.mcpSimulationData = {
+      uavs: [],
+      scenario: {},
+      performance: {},
+      timestamp: null
+    };
+    
     // Connect to MCP server (optional)
     if ((process.env.MCP_AUTO_CONNECT || 'true').toLowerCase() !== 'false') {
       this.connectToMCP();
@@ -34,6 +49,52 @@ class WebSocketHandler {
     
     // Start data collection
     this.startDataCollection();
+    
+    // Setup socket.io event handlers
+    this.setupSocketHandlers();
+  }
+  
+  setupSocketHandlers() {
+    this.io.on('connection', (socket) => {
+      console.log('Client connected:', socket.id);
+      
+      socket.on('request_comparison_data', () => {
+        socket.emit('baseline_simulation_update', this.baselineSimulationData);
+        socket.emit('mcp_simulation_update', this.mcpSimulationData);
+      });
+      
+      socket.on('start_comparison', () => {
+        this.comparisonMode = true;
+        console.log('Comparison mode started');
+        this.io.emit('comparison_started');
+      });
+      
+      socket.on('stop_comparison', () => {
+        this.comparisonMode = false;
+        console.log('Comparison mode stopped');
+        this.io.emit('comparison_stopped');
+      });
+      
+      socket.on('reset_comparison', () => {
+        this.baselineSimulationData = {
+          uavs: [],
+          scenario: {},
+          performance: {},
+          timestamp: null
+        };
+        this.mcpSimulationData = {
+          uavs: [],
+          scenario: {},
+          performance: {},
+          timestamp: null
+        };
+        this.io.emit('comparison_reset');
+      });
+      
+      socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+      });
+    });
   }
   
   connectToMCP() {
@@ -58,6 +119,7 @@ class WebSocketHandler {
       this.mcpWebSocket.on('message', (data) => {
         try {
           const message = JSON.parse(data);
+          console.log('Received MCP message:', message.message_type);
           this.handleMCPMessage(message);
         } catch (error) {
           console.error('Error parsing MCP message:', error);
@@ -109,11 +171,13 @@ class WebSocketHandler {
   handleMCPMessage(message) {
     switch (message.message_type) {
       case 'context_broadcast':
+        console.log('Processing context_broadcast, data keys:', Object.keys(message.data || {}));
         this.updateSimulationData(message.data);
         this.broadcastSimulationUpdate();
         break;
       
       case 'periodic_update':
+        console.log('Processing periodic_update, data keys:', Object.keys(message.data || {}));
         this.updateSimulationData(message.data);
         this.broadcastSimulationUpdate();
         break;
@@ -135,6 +199,34 @@ class WebSocketHandler {
       performance: this.extractPerformanceData(data),
       timestamp: new Date().toISOString()
     };
+    
+    // If in comparison mode, determine which simulation this is
+    if (this.comparisonMode) {
+      // Check if this is baseline (no MCP context) or MCP (has MCP context)
+      const hasMcpContext = data.context && (
+        data.context.coverage_map || 
+        data.context.communication_network ||
+        data.sender_type === 'mcp'
+      );
+      
+      if (hasMcpContext) {
+        this.mcpSimulationData = {
+          uavs: this.extractUAVData(data),
+          scenario: this.extractScenarioData(data),
+          performance: this.extractPerformanceData(data),
+          timestamp: new Date().toISOString()
+        };
+        this.io.emit('mcp_simulation_update', this.mcpSimulationData);
+      } else {
+        this.baselineSimulationData = {
+          uavs: this.extractUAVData(data),
+          scenario: this.extractScenarioData(data),
+          performance: this.extractPerformanceData(data),
+          timestamp: new Date().toISOString()
+        };
+        this.io.emit('baseline_simulation_update', this.baselineSimulationData);
+      }
+    }
   }
   
   extractUAVData(data) {
@@ -161,8 +253,19 @@ class WebSocketHandler {
   }
   
   getUAVPosition(uavId, data) {
-    // This would be extracted from position data in a real implementation
-    // For now, return a placeholder
+    // Extract position from context if available
+    const context = data.context || data;
+    const uavPositions = context.uav_positions || {};
+    
+    if (uavPositions[uavId]) {
+      return {
+        x: uavPositions[uavId].x || 0,
+        y: uavPositions[uavId].y || 0,
+        z: uavPositions[uavId].z || 10
+      };
+    }
+    
+    // Fallback to placeholder if no position data
     return {
       x: Math.random() * 1000,
       y: Math.random() * 1000,
@@ -269,6 +372,8 @@ class WebSocketHandler {
   }
   
   broadcastSimulationUpdate() {
+    const uavCount = (this.simulationData.uavs || []).length;
+    console.log(`Broadcasting simulation_update: ${uavCount} UAVs, coverage: ${this.simulationData.performance?.coverage_percentage || 0}%`);
     this.io.emit('simulation_update', this.simulationData);
   }
   

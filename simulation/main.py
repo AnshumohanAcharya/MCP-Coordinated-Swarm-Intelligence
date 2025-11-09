@@ -38,6 +38,7 @@ async def run_simulation(config_path: str = None, headless: bool = False):
         # Run simulation
         start_time = time.time()
         step_count = 0
+        episode_count = 0
         
         while time.time() - start_time < config.simulation_time:
             # Generate random actions for demonstration
@@ -54,17 +55,24 @@ async def run_simulation(config_path: str = None, headless: bool = False):
             
             # Log progress
             if step_count % 100 == 0:
-                logger.info(f"Step {step_count}, Reward: {reward:.3f}, "
+                logger.info(f"Episode {episode_count}, Step {step_count}, Reward: {reward:.3f}, "
                           f"Coverage: {info['performance_metrics']['coverage_percentage'][-1]:.1f}%")
             
-            # Check termination
+            # Check termination - reset and continue instead of breaking
             if terminated or truncated:
-                logger.info("Episode terminated")
-                break
+                episode_count += 1
+                logger.info(f"Episode {episode_count-1} terminated. Resetting and continuing...")
+                observations, info = env.reset()
+                step_count = 0
+                continue
             
             step_count += 1
             
-            # Small delay for visualization
+            # Small delay to allow async tasks (MCP updates) to execute
+            # This is critical for MCP communication to work
+            await asyncio.sleep(0.01)  # 10ms delay allows event loop to process tasks
+            
+            # Additional delay for visualization
             if config.render:
                 await asyncio.sleep(1.0 / config.render_fps)
     

@@ -2,6 +2,7 @@
 
 import json
 import asyncio
+import websockets
 from typing import Dict, Any, Optional, Callable
 from dataclasses import asdict
 import time
@@ -143,13 +144,29 @@ class MessageProtocol:
     async def _send_to_client(self, client_id: str, message_data: str):
         """Internal method to send data to a client."""
         try:
+            if client_id not in self.registered_clients:
+                return  # Client not registered
+            
             client_data = self.registered_clients[client_id]
-            websocket = client_data["websocket"]
+            websocket = client_data.get("websocket")
+            
+            if websocket is None:
+                # Websocket not available, skip sending
+                return
+            
+            # Check if websocket is closed
+            if hasattr(websocket, 'closed') and websocket.closed:
+                self.unregister_client(client_id)
+                return
+            
             await websocket.send(message_data)
+        except websockets.exceptions.ConnectionClosed:
+            # Connection closed - will be cleaned up by handle_client
+            pass
         except Exception as e:
-            print(f"Error sending message to client {client_id}: {e}")
-            # Remove client if connection is broken
-            self.unregister_client(client_id)
+            # Log error but don't unregister here - let handle_client do it
+            # This prevents race conditions
+            pass
     
     def get_client_info(self, client_id: str) -> Optional[Dict[str, Any]]:
         """Get information about a specific client."""

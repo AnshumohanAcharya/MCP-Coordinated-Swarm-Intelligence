@@ -52,7 +52,7 @@ class RLConfig:
     epsilon_decay: int = 1000
     target_update_frequency: int = 100
     training_frequency: int = 4
-    max_episode_length: int = 1000
+    max_episode_length: int = 5000
     total_timesteps: int = 1000000
 
 

@@ -97,11 +97,33 @@ class ContextManager:
         """Aggregate context from all clients into a unified view."""
         current_time = time.time()
         
-        # Aggregate battery status
-        battery_status = {}
+        # Aggregate battery status and positions
+        # First pass: collect all data by client_id
+        client_info = {}
         for client_id, data in self.client_data.items():
+            if client_id not in client_info:
+                client_info[client_id] = {"battery": None, "position": None}
+            
             if data["context_type"] == "battery":
-                battery_status[client_id] = data["data"].get("battery_level", 100.0)
+                client_info[client_id]["battery"] = data["data"].get("battery_level", 100.0)
+            elif data["context_type"] == "position":
+                client_info[client_id]["position"] = {
+                    "x": data["data"].get("x", 0.0),
+                    "y": data["data"].get("y", 0.0),
+                    "z": data["data"].get("z", 10.0)
+                }
+        
+        # Second pass: build final dictionaries
+        battery_status = {}
+        uav_positions = {}
+        for client_id, info in client_info.items():
+            if info["battery"] is not None:
+                battery_status[client_id] = info["battery"]
+            if info["position"] is not None:
+                uav_positions[client_id] = info["position"]
+                # Ensure battery exists for UAVs with positions (for dashboard)
+                if client_id not in battery_status:
+                    battery_status[client_id] = 100.0  # Default
         
         # Aggregate communication network
         communication_network = self._build_communication_network()
@@ -127,6 +149,7 @@ class ContextManager:
         context = SwarmContext(
             coverage_map=coverage_map,
             battery_status=battery_status,
+            uav_positions=uav_positions,
             communication_network=communication_network,
             environmental_conditions=environmental_conditions,
             target_priorities=target_priorities,
@@ -172,13 +195,33 @@ class ContextManager:
     def _get_environmental_conditions(self) -> Dict[str, Any]:
         """Get current environmental conditions."""
         # This would typically come from sensors or external data
-        # For now, return simulated data
-        return {
+        # For now, return simulated data with tidal information if available
+        conditions = {
             "temperature": 25.0,  # Celsius
             "humidity": 60.0,  # Percentage
             "visibility": 10.0,  # km
             "weather": "clear"
         }
+        
+        # Try to get tidal data from simulation if available
+        # This is a placeholder - in practice, this would come from the simulation environment
+        try:
+            from simulation.tidal_data import get_tidal_loader
+            import time
+            tidal_loader = get_tidal_loader()
+            if tidal_loader is not None:
+                simulation_time = time.time() - (getattr(self, 'simulation_start_time', time.time()))
+                tidal_conditions = tidal_loader.get_environmental_conditions(simulation_time)
+                conditions.update({
+                    "tidal_pressure": tidal_conditions.get('tidal_pressure', 0.0),
+                    "tidal_phase": tidal_conditions.get('tidal_phase', 'unknown'),
+                    "wind_modification_factor": tidal_conditions.get('wind_modification_factor', 1.0)
+                })
+        except Exception:
+            # Tidal data not available, use defaults
+            pass
+        
+        return conditions
     
     def _get_target_priorities(self) -> Dict[str, int]:
         """Get target priorities based on current context."""

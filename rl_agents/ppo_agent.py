@@ -254,7 +254,7 @@ class PPOAgent(BaseAgent):
     
     def load(self, filepath: str) -> None:
         """Load the agent's model."""
-        checkpoint = torch.load(filepath, map_location=self.device)
+        checkpoint = torch.load(filepath, map_location=self.device, weights_only=False)
         self.actor_critic.load_state_dict(checkpoint["actor_critic_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.performance_history = checkpoint.get("performance_history", self.performance_history)

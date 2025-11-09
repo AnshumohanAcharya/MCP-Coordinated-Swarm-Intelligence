@@ -113,6 +113,7 @@ class SwarmContext:
     
     coverage_map: Dict[str, Any]
     battery_status: Dict[str, float]  # UAV ID -> battery percentage
+    uav_positions: Dict[str, Dict[str, float]]  # UAV ID -> {x, y, z}
     communication_network: Dict[str, List[str]]  # UAV ID -> connected UAVs
     environmental_conditions: Dict[str, Any]
     target_priorities: Dict[str, int]  # target ID -> priority
@@ -126,6 +127,7 @@ class SwarmContext:
         return {
             "coverage_map": self.coverage_map,
             "battery_status": self.battery_status,
+            "uav_positions": self.uav_positions,
             "communication_network": self.communication_network,
             "environmental_conditions": self.environmental_conditions,
             "target_priorities": self.target_priorities,
@@ -141,6 +143,7 @@ class SwarmContext:
         return cls(
             coverage_map=data["coverage_map"],
             battery_status=data["battery_status"],
+            uav_positions=data.get("uav_positions", {}),
             communication_network=data["communication_network"],
             environmental_conditions=data["environmental_conditions"],
             target_priorities=data["target_priorities"],

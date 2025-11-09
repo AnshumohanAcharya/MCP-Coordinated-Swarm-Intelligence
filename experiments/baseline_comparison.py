@@ -36,10 +36,13 @@ class BaselineComparison:
         """Run baseline experiment without MCP coordination."""
         logger.info("Running baseline experiment (no MCP coordination)")
         
-        # Create environment without MCP
-        env = SwarmEnvironment(self.config)
+        # Create environment without MCP - explicitly do NOT start MCP connection
+        env = SwarmEnvironment(self.config, mcp_server_url=None)
+        # Ensure MCP is not connected
+        env.mcp_connected = False
+        env.mcp_websocket = None
         
-        # Create baseline agents
+        # Create baseline agents (PPO only, no context awareness)
         agents = self._create_baseline_agents(env)
         
         episode_results = []
@@ -50,14 +53,19 @@ class BaselineComparison:
             episode_length = 0
             
             while True:
-                # Get actions from agents
+                # Get actions from agents (baseline agents don't use context)
                 actions = self._get_agent_actions(agents, obs)
                 
-                # Step environment
+                # Step environment (without MCP context updates)
                 obs, reward, terminated, truncated, info = env.step(actions)
                 
                 episode_reward += reward
                 episode_length += 1
+                
+                # Ensure no MCP context is being used
+                if env.mcp_connected:
+                    logger.warning("Baseline experiment: MCP connection detected! Disabling...")
+                    env.mcp_connected = False
                 
                 if terminated or truncated:
                     break
@@ -330,34 +338,60 @@ class BaselineComparison:
         
         plt.show()
     
-    async def run_comparison(self, num_episodes: int = 100, save_results: bool = True):
-        """Run complete comparison experiment."""
-        logger.info(f"Starting baseline comparison experiment with {num_episodes} episodes each")
+    async def run_comparison(self, num_episodes: int = 100, save_results: bool = True, num_runs: int = 1):
+        """Run complete comparison experiment with multiple runs for statistical significance."""
+        logger.info(f"Starting baseline comparison experiment with {num_episodes} episodes each, {num_runs} runs")
         
-        # Run baseline experiment
-        baseline_results = await self.run_baseline_experiment(num_episodes)
+        all_baseline_results = []
+        all_mcp_results = []
         
-        # Run MCP experiment
-        mcp_results = await self.run_mcp_experiment(num_episodes)
+        # Run multiple times for statistical significance
+        for run in range(num_runs):
+            logger.info(f"Run {run + 1}/{num_runs}")
+            
+            # Run baseline experiment
+            baseline_results = await self.run_baseline_experiment(num_episodes)
+            all_baseline_results.append(baseline_results)
+            
+            # Run MCP experiment
+            mcp_results = await self.run_mcp_experiment(num_episodes)
+            all_mcp_results.append(mcp_results)
+        
+        # Aggregate results across runs
+        aggregated_baseline = self._aggregate_runs(all_baseline_results)
+        aggregated_mcp = self._aggregate_runs(all_mcp_results)
         
         # Analyze results
-        analysis = self.analyze_results(baseline_results, mcp_results)
+        analysis = self.analyze_results(aggregated_baseline, aggregated_mcp)
+        
+        # Add statistical significance
+        analysis["statistical_significance"] = self._calculate_statistical_significance(
+            all_baseline_results, all_mcp_results
+        )
         
         # Print results
         self._print_analysis(analysis)
         
         # Plot results
-        self.plot_results(baseline_results, mcp_results, "results/baseline_comparison.png")
+        self.plot_results(aggregated_baseline, aggregated_mcp, "results/baseline_comparison.png")
+        
+        # Generate comparison report
+        self._generate_comparison_report(analysis, num_episodes, num_runs)
         
         # Save results
         if save_results:
             os.makedirs("results", exist_ok=True)
             results_data = {
-                "baseline_results": baseline_results,
-                "mcp_results": mcp_results,
+                "baseline_results": aggregated_baseline,
+                "mcp_results": aggregated_mcp,
+                "all_runs": {
+                    "baseline": all_baseline_results,
+                    "mcp": all_mcp_results
+                },
                 "analysis": analysis,
                 "config": {
                     "num_episodes": num_episodes,
+                    "num_runs": num_runs,
                     "num_uavs": self.config.num_uavs,
                     "simulation_time": self.config.simulation_time
                 }
@@ -370,11 +404,161 @@ class BaselineComparison:
         
         return analysis
     
+    def _aggregate_runs(self, all_runs: List[List[Dict]]) -> List[Dict]:
+        """Aggregate results from multiple runs."""
+        if not all_runs:
+            return []
+        
+        num_episodes = len(all_runs[0])
+        aggregated = []
+        
+        for episode_idx in range(num_episodes):
+            episode_data = {
+                "episode": episode_idx,
+                "reward": np.mean([run[episode_idx]["reward"] for run in all_runs]),
+                "length": np.mean([run[episode_idx]["length"] for run in all_runs]),
+                "coverage": np.mean([run[episode_idx]["coverage"] for run in all_runs]),
+                "battery_efficiency": np.mean([run[episode_idx]["battery_efficiency"] for run in all_runs]),
+                "communication_reliability": np.mean([run[episode_idx]["communication_reliability"] for run in all_runs]),
+                "collision_count": np.mean([run[episode_idx]["collision_count"] for run in all_runs]),
+                "mission_success": np.mean([1 if run[episode_idx]["mission_success"] else 0 for run in all_runs])
+            }
+            aggregated.append(episode_data)
+        
+        return aggregated
+    
+    def _calculate_statistical_significance(self, baseline_runs: List[List[Dict]], mcp_runs: List[List[Dict]]) -> Dict[str, Any]:
+        """Calculate statistical significance of improvements."""
+        # Extract final coverage values from all runs
+        baseline_final_coverage = [run[-1]["coverage"] for run in baseline_runs]
+        mcp_final_coverage = [run[-1]["coverage"] for run in mcp_runs]
+        
+        baseline_mean = np.mean(baseline_final_coverage)
+        mcp_mean = np.mean(mcp_final_coverage)
+        baseline_std = np.std(baseline_final_coverage)
+        mcp_std = np.std(mcp_final_coverage)
+        
+        # Simple t-test approximation
+        pooled_std = np.sqrt((baseline_std**2 + mcp_std**2) / 2)
+        if pooled_std > 0:
+            t_stat = (mcp_mean - baseline_mean) / (pooled_std / np.sqrt(len(baseline_runs)))
+        else:
+            t_stat = 0
+        
+        return {
+            "baseline_mean": baseline_mean,
+            "baseline_std": baseline_std,
+            "mcp_mean": mcp_mean,
+            "mcp_std": mcp_std,
+            "improvement": mcp_mean - baseline_mean,
+            "improvement_percent": ((mcp_mean - baseline_mean) / baseline_mean * 100) if baseline_mean > 0 else 0,
+            "t_statistic": t_stat,
+            "significant": abs(t_stat) > 1.96  # Approximate 95% confidence
+        }
+    
+    def _generate_comparison_report(self, analysis: Dict[str, Any], num_episodes: int, num_runs: int):
+        """Generate a human-readable comparison report."""
+        os.makedirs("results", exist_ok=True)
+        
+        report_lines = [
+            "=" * 80,
+            "BASELINE vs MCP-COORDINATED SWARM COMPARISON REPORT",
+            "=" * 80,
+            "",
+            f"Configuration:",
+            f"  - Episodes per run: {num_episodes}",
+            f"  - Number of runs: {num_runs}",
+            f"  - Number of UAVs: {self.config.num_uavs}",
+            f"  - Simulation time: {self.config.simulation_time}s",
+            "",
+            "=" * 80,
+            "PERFORMANCE METRICS",
+            "=" * 80,
+            "",
+        ]
+        
+        # Coverage metrics
+        cov_imp = analysis["improvements"].get("coverage", {})
+        report_lines.extend([
+            "Coverage Performance:",
+            f"  Baseline Average: {cov_imp.get('baseline', 0):.2f}%",
+            f"  MCP Average: {cov_imp.get('mcp', 0):.2f}%",
+            f"  Improvement: {cov_imp.get('improvement_percent', 0):+.2f}%",
+            "",
+        ])
+        
+        # Battery efficiency
+        bat_imp = analysis["improvements"].get("battery_efficiency", {})
+        report_lines.extend([
+            "Battery Efficiency:",
+            f"  Baseline Average: {bat_imp.get('baseline', 0):.2f}",
+            f"  MCP Average: {bat_imp.get('mcp', 0):.2f}",
+            f"  Improvement: {bat_imp.get('improvement_percent', 0):+.2f}%",
+            "",
+        ])
+        
+        # Communication reliability
+        comm_imp = analysis["improvements"].get("communication_reliability", {})
+        report_lines.extend([
+            "Communication Reliability:",
+            f"  Baseline Average: {comm_imp.get('baseline', 0):.2f}",
+            f"  MCP Average: {comm_imp.get('mcp', 0):.2f}",
+            f"  Improvement: {comm_imp.get('improvement_percent', 0):+.2f}%",
+            "",
+        ])
+        
+        # Statistical significance
+        if "statistical_significance" in analysis:
+            sig = analysis["statistical_significance"]
+            report_lines.extend([
+                "=" * 80,
+                "STATISTICAL SIGNIFICANCE",
+                "=" * 80,
+                "",
+                f"Coverage Improvement: {sig.get('improvement_percent', 0):+.2f}%",
+                f"Statistical Significance: {'Significant' if sig.get('significant', False) else 'Not Significant'}",
+                f"T-statistic: {sig.get('t_statistic', 0):.2f}",
+                "",
+            ])
+        
+        report_lines.extend([
+            "=" * 80,
+            "KEY FINDINGS",
+            "=" * 80,
+            "",
+            f"1. MCP-coordinated swarm achieves {cov_imp.get('improvement_percent', 0):+.1f}% better coverage",
+            f"2. Battery efficiency improved by {bat_imp.get('improvement_percent', 0):+.1f}%",
+            f"3. Communication reliability improved by {comm_imp.get('improvement_percent', 0):+.1f}%",
+            "",
+            "=" * 80,
+        ])
+        
+        report_text = "\n".join(report_lines)
+        
+        with open("results/comparison_report.txt", "w") as f:
+            f.write(report_text)
+        
+        logger.info("Comparison report saved to results/comparison_report.txt")
+        print("\n" + report_text)
+    
     def _print_analysis(self, analysis: Dict[str, Any]):
         """Print analysis results."""
         print("\n" + "="*60)
         print("BASELINE COMPARISON RESULTS")
         print("="*60)
+        
+        # Check if agents appear to be untrained
+        baseline_coverage = analysis["baseline_stats"].get("avg_coverage", 0)
+        mcp_coverage = analysis["mcp_stats"].get("avg_coverage", 0)
+        
+        if baseline_coverage < 10.0 or mcp_coverage < 10.0:
+            print("\n⚠️  NOTE: Low coverage values suggest agents may be untrained.")
+            print("   For meaningful quantitative results, train agents first:")
+            print("   1. python -m rl_agents.train --episodes 200 --no-context  # Baseline")
+            print("   2. python -m rl_agents.train --episodes 200              # MCP")
+            print("   3. Then run comparison with trained models")
+            print("\n   For Review 2, focus on qualitative differences in coordination.")
+            print("="*60)
         
         print("\nBASELINE PERFORMANCE:")
         baseline_stats = analysis["baseline_stats"]
@@ -389,27 +573,41 @@ class BaselineComparison:
         print("\nIMPROVEMENTS:")
         improvements = analysis["improvements"]
         for metric, data in improvements.items():
-            print(f"  {metric}:")
+            improvement_pct = data['improvement_percent']
+            symbol = "✅" if improvement_pct > 0 else "⚠️" if improvement_pct < -5 else "➡️"
+            print(f"  {symbol} {metric}:")
             print(f"    Baseline: {data['baseline']:.3f}")
             print(f"    MCP: {data['mcp']:.3f}")
-            print(f"    Improvement: {data['improvement_percent']:.1f}%")
+            print(f"    Improvement: {improvement_pct:+.1f}%")
         
         print("\n" + "="*60)
+        print("💡 TIP: See experiments/RESULTS_ANALYSIS.md for interpretation guide")
+        print("="*60)
 
 
 async def main():
     """Main function to run baseline comparison."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Baseline Comparison Experiment")
+    parser.add_argument("--episodes", type=int, default=50, help="Number of episodes per run")
+    parser.add_argument("--runs", type=int, default=1, help="Number of runs for statistical significance")
+    parser.add_argument("--num-uavs", type=int, default=3, help="Number of UAVs")
+    parser.add_argument("--simulation-time", type=float, default=60.0, help="Simulation time in seconds")
+    
+    args = parser.parse_args()
+    
     # Load configuration
     config = SimulationConfig()
-    config.num_uavs = 3
-    config.simulation_time = 60.0  # Shorter for testing
+    config.num_uavs = args.num_uavs
+    config.simulation_time = args.simulation_time
     config.render = False  # Disable rendering for experiments
     
     # Create comparison experiment
     comparison = BaselineComparison(config)
     
     # Run comparison
-    analysis = await comparison.run_comparison(num_episodes=50)
+    analysis = await comparison.run_comparison(num_episodes=args.episodes, num_runs=args.runs)
     
     return analysis
 
