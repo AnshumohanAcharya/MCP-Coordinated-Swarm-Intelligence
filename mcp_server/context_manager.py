@@ -10,6 +10,44 @@ from config.mcp_config import SwarmContext, ContextMessage
 
 
 @dataclass
+class OccupancyGrid:
+    """Grid-based occupancy tracking for SLAM-inspired mapping."""
+    width: int
+    height: int
+    resolution: float
+    grid: np.ndarray  # 0 = unknown, 1 = free, -1 = occupied
+    last_updated: float
+    
+    def update_occupancy(self, x: float, y: float, sensor_data: Dict[str, Any]):
+        """Update occupancy grid with sensor data."""
+        # Convert world coordinates to grid coordinates
+        grid_x = int(x / self.resolution)
+        grid_y = int(y / self.resolution)
+        
+        # Simple laser scan-like update if sensor_data contains obstacles
+        if "obstacles" in sensor_data:
+            for obs in sensor_data["obstacles"]:
+                obs_x, obs_y = obs["x"], obs["y"]
+                g_obs_x = int(obs_x / self.resolution)
+                g_obs_y = int(obs_y / self.resolution)
+                
+                if 0 <= g_obs_x < self.width and 0 <= g_obs_y < self.height:
+                    self.grid[g_obs_y, g_obs_x] = -1
+        
+        # Mark area around UAV as free
+        radius = int(5.0 / self.resolution)
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                cell_x, cell_y = grid_x + dx, grid_y + dy
+                if (0 <= cell_x < self.width and 
+                    0 <= cell_y < self.height and
+                    dx*dx + dy*dy <= radius*radius):
+                    if self.grid[cell_y, cell_x] == 0:
+                        self.grid[cell_y, cell_x] = 1
+        
+        self.last_updated = time.time()
+
+@dataclass
 class CoverageGrid:
     """Grid-based coverage tracking."""
     width: int
@@ -58,19 +96,28 @@ class ContextManager:
         self.context_history = deque(maxlen=100)  # Keep last 100 context updates
         self.client_data = {}  # Store individual client data
         self.coverage_grid = None
+        self.occupancy_grid = None
         self.last_context_update = 0.0
         
-        # Initialize coverage grid
-        self._initialize_coverage_grid()
+        # Initialize grids
+        self._initialize_grids()
     
-    def _initialize_coverage_grid(self):
-        """Initialize the coverage tracking grid."""
-        # Assuming environment is 1000x1000 meters, use larger resolution for performance
-        grid_resolution = max(self.config.coverage_grid_resolution, 50)  # Minimum 50m resolution
+    def _initialize_grids(self):
+        """Initialize tracking grids."""
+        # Assuming environment is 1000x1000 meters
+        grid_resolution = max(self.config.coverage_grid_resolution, 20)
         grid_width = 1000 // grid_resolution
         grid_height = 1000 // grid_resolution
         
         self.coverage_grid = CoverageGrid(
+            width=grid_width,
+            height=grid_height,
+            resolution=grid_resolution,
+            grid=np.zeros((grid_height, grid_width), dtype=np.int8),
+            last_updated=time.time()
+        )
+        
+        self.occupancy_grid = OccupancyGrid(
             width=grid_width,
             height=grid_height,
             resolution=grid_resolution,
@@ -86,13 +133,41 @@ class ContextManager:
             "context_type": message.context_type
         }
         
-        # Update coverage if this is a position update
+        # Update coverage and occupancy if this is a position update
         if message.context_type == "position" and "x" in message.data and "y" in message.data:
             x = message.data["x"]
             y = message.data["y"]
             sensor_range = message.data.get("sensor_range", 30.0)
             self.coverage_grid.update_coverage(x, y, sensor_range)
+            
+            # Update occupancy with sensor data
+            sensor_data = message.data.get("sensor_data", {})
+            self.occupancy_grid.update_occupancy(x, y, sensor_data)
     
+    def has_critical_events(self) -> bool:
+        """Check if any critical events exist that require higher protocol frequency."""
+        # Check battery levels
+        for client_id, data in self.client_data.items():
+             if data.get("context_type") == "position": # Position updates often contain battery in 'data'
+                  battery = data.get("data", {}).get("battery", 100.0)
+                  if battery < 20.0:
+                       return True
+             elif data.get("context_type") == "battery":
+                  battery = data.get("data", {}).get("battery_level", 100.0)
+                  if battery < 20.0:
+                       return True
+        
+        # Check for emergency events
+        if any(event.get("severity", 0) > 0.8 for event in self._get_emergency_events()):
+             return True
+             
+        # Check for high disaster zone severity
+        for zone in getattr(self.config, "disaster_zones", []):
+             if len(zone) >= 4 and zone[3] > 0.8: # Assuming (x,y,w,h,severity) or similar
+                  return True
+                  
+        return False
+
     def aggregate_context(self) -> SwarmContext:
         """Aggregate context from all clients into a unified view."""
         current_time = time.time()
@@ -118,6 +193,14 @@ class ContextManager:
         # Get wind conditions
         wind_conditions = self._get_wind_conditions()
         
+        # Get occupancy grid (SLAM feature)
+        occupancy_grid_data = {
+            "grid": self.occupancy_grid.grid[::10, ::10].tolist(), # Downsample
+            "resolution": self.occupancy_grid.resolution * 10,
+            "width": self.occupancy_grid.width // 10,
+            "height": self.occupancy_grid.height // 10
+        }
+        
         # Get emergency events
         emergency_events = self._get_emergency_events()
         
@@ -126,6 +209,7 @@ class ContextManager:
         
         context = SwarmContext(
             coverage_map=coverage_map,
+            occupancy_grid=occupancy_grid_data,
             battery_status=battery_status,
             communication_network=communication_network,
             environmental_conditions=environmental_conditions,

@@ -2,7 +2,8 @@
 numpy>=1.21.0
 scipy>=1.7.0
 matplotlib>=3.5.0
-pygame>=2.1.0
+pygame>=2.1.0; python_version < "3.14"
+pygame-ce>=2.4.0; python_version >= "3.14"
 
 # Reinforcement Learning
 torch>=1.12.0

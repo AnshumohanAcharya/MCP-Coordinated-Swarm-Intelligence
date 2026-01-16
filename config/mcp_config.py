@@ -120,11 +120,13 @@ class SwarmContext:
     wind_conditions: Dict[str, float]
     emergency_events: List[Dict[str, Any]]
     last_updated: float
+    occupancy_grid: Optional[Dict[str, Any]] = None  # Added for SLAM
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert context to dictionary for transmission."""
         return {
             "coverage_map": self.coverage_map,
+            "occupancy_grid": self.occupancy_grid,
             "battery_status": self.battery_status,
             "communication_network": self.communication_network,
             "environmental_conditions": self.environmental_conditions,
@@ -140,6 +142,7 @@ class SwarmContext:
         """Create context from dictionary."""
         return cls(
             coverage_map=data["coverage_map"],
+            occupancy_grid=data.get("occupancy_grid"),
             battery_status=data["battery_status"],
             communication_network=data["communication_network"],
             environmental_conditions=data["environmental_conditions"],

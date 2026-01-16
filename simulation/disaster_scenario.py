@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import time
 
 from config.simulation_config import EnvironmentConfig
+from .data_loader import DisasterDatasetLoader
 
 
 @dataclass
@@ -20,6 +21,7 @@ class DisasterZone:
     priority: int  # 1-4 (low to critical)
     discovered: bool = False
     last_updated: float = 0.0
+    radius: float = 50.0 # Added for circular zones support
 
 
 @dataclass
@@ -67,13 +69,18 @@ class DisasterScenario:
         self.width = config.width
         self.height = config.height
         
+        # Initialize Dataset Loader (Vast Dataset Integration)
+        self.dataset_loader = DisasterDatasetLoader(dataset_type="wildfire")
+        self.timestep_counter = 0
+        
         # Initialize disaster zones
         self.disaster_zones = []
         for x, y, w, h in config.disaster_zones:
             zone = DisasterZone(
                 x=x, y=y, width=w, height=h,
                 severity=random.uniform(0.5, 1.0),
-                priority=random.randint(2, 4)
+                priority=random.randint(2, 4),
+                radius=w/2 # Default radius from config
             )
             self.disaster_zones.append(zone)
         
@@ -129,11 +136,42 @@ class DisasterScenario:
         self._update_target_coverage()
     
     def _update_disaster_zones(self, dt: float):
-        """Update disaster zone dynamics."""
+        """Update disaster zone dynamics using historical/simulated vast dataset."""
+        self.timestep_counter += 1
+        
+        # Get dynamic zones from dataset
+        dataset_zones = self.dataset_loader.get_active_zones(self.timestep_counter)
+        
+        # Merge dataset zones into existing scenario zones or replace them
+        # For simplicity, we'll keep a mix of static config zones and dynamic dataset zones
+        active_dataset_zones = []
+        for d_zone in dataset_zones:
+            zone = DisasterZone(
+                x=d_zone["x"],
+                y=d_zone["y"],
+                width=d_zone["radius"]*2,
+                height=d_zone["radius"]*2,
+                severity=d_zone["severity"],
+                priority=4 if d_zone["severity"] > 0.8 else 3,
+                radius=d_zone["radius"]
+            )
+            active_dataset_zones.append(zone)
+            
+        # Update our main disaster zones list with dynamic data
+        # We'll keep the first few from config and append dynamic ones
+        self.disaster_zones = self.disaster_zones[:len(self.config.disaster_zones)] + active_dataset_zones
+
+        import random
         for zone in self.disaster_zones:
             # Simulate zone evolution (e.g., fire spreading)
             if zone.severity < 1.0:
                 zone.severity = min(1.0, zone.severity + random.uniform(0.001, 0.01) * dt)
+            
+            # Innovative feature: Dynamic spreading of critical zones
+            if zone.severity > 0.8 and hasattr(zone, 'radius'):
+                if random.random() < 0.02: # 2% chance per update
+                    zone.radius += 1.0 * dt
+                    zone.radius = min(zone.radius, 150.0) # Cap spread
             
             # Update priority based on severity
             if zone.severity > 0.8:

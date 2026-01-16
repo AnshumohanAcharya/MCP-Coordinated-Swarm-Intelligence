@@ -1,8 +1,10 @@
 """Main simulation entry point for MCP-Coordinated Swarm Intelligence."""
 
-import asyncio
 import argparse
+import asyncio
+import os
 import time
+
 from loguru import logger
 
 from config.simulation_config import SimulationConfig
@@ -88,12 +90,11 @@ def main():
     
     args = parser.parse_args()
     
+    # Create logs directory
+    os.makedirs("logs", exist_ok=True)
+    
     # Setup logging
     logger.add("logs/simulation.log", rotation="1 day", retention="7 days")
-    
-    # Create logs directory
-    import os
-    os.makedirs("logs", exist_ok=True)
     
     # Run simulation
     asyncio.run(run_simulation(args.config, args.headless))

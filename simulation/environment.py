@@ -1,18 +1,19 @@
 """Main simulation environment for UAV swarm coordination."""
 
-import numpy as np
-import gymnasium as gym
-from gymnasium import spaces
 import asyncio
-import websockets
 import json
 import time
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import gymnasium as gym
+import numpy as np
+import websockets
+from gymnasium import spaces
 from loguru import logger
 
 from .uav import UAV
 from .disaster_scenario import DisasterScenario
-from .visualization import SwarmVisualizer
+# from .visualization import SwarmVisualizer
 from config.simulation_config import SimulationConfig
 from config.mcp_config import ContextMessage
 
@@ -34,7 +35,11 @@ class SwarmEnvironment(gym.Env):
         self.scenario = DisasterScenario(config.environment_config)
         
         # Initialize visualization
-        self.visualizer = SwarmVisualizer(config) if config.render else None
+        if config.render:
+            from .visualization import SwarmVisualizer
+            self.visualizer = SwarmVisualizer(config)
+        else:
+            self.visualizer = None
         
         # MCP connection
         self.mcp_websocket = None
@@ -140,6 +145,14 @@ class SwarmEnvironment(gym.Env):
             return
         
         for uav in self.uavs:
+            # SLAM integration: Detect nearby obstacles
+            obstacles_in_range = self.scenario.get_obstacles_in_range(
+                uav.state.x, uav.state.y, uav.sensor_range
+            )
+            sensor_data = {
+                "obstacles": [{"x": obs.x, "y": obs.y} for obs in obstacles_in_range]
+            }
+            
             # Send position update
             position_message = ContextMessage(
                 message_type="update",
@@ -147,11 +160,13 @@ class SwarmEnvironment(gym.Env):
                 timestamp=time.time(),
                 context_type="position",
                 data={
-                    "x": uav.state.x,
-                    "y": uav.state.y,
-                    "z": uav.state.z,
-                    "sensor_range": uav.sensor_range,
-                    "communication_range": uav.communication_range
+                    "x": float(uav.state.x),
+                    "y": float(uav.state.y),
+                    "z": float(uav.state.z),
+                    "battery": float(uav.state.battery),
+                    "sensor_range": float(uav.sensor_range),
+                    "communication_range": float(uav.communication_range),
+                    "sensor_data": sensor_data
                 }
             )
             

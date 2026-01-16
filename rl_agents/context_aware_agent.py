@@ -8,13 +8,14 @@ import asyncio
 import websockets
 import json
 import time
+from loguru import logger
 
 from .ppo_agent import PPOAgent
 from config.mcp_config import ContextMessage
 
 
 class ContextAwareNetwork(nn.Module):
-    """Neural network that processes both local state and global context."""
+    """Neural network that processes both local state and global context with LSTM for temporal dependencies."""
     
     def __init__(self, state_dim: int, context_dim: int, action_dim: int, 
                  hidden_dims: list = [256, 256]):
@@ -31,11 +32,12 @@ class ContextAwareNetwork(nn.Module):
             nn.Dropout(0.1)
         )
         
-        # Context encoder
-        self.context_encoder = nn.Sequential(
-            nn.Linear(context_dim, hidden_dims[0]),
-            nn.ReLU(),
-            nn.Dropout(0.1)
+        # Context encoder (LSTM for predictive modeling)
+        self.context_lstm = nn.LSTM(
+            input_size=context_dim,
+            hidden_size=hidden_dims[0],
+            num_layers=1,
+            batch_first=True
         )
         
         # Attention mechanism for context integration
@@ -66,17 +68,26 @@ class ContextAwareNetwork(nn.Module):
         # Critic head
         self.critic = nn.Linear(hidden_dims[1], 1)
     
-    def forward(self, state: torch.Tensor, context: torch.Tensor):
-        """Forward pass with state and context."""
-        # Encode state and context
+    def forward(self, state: torch.Tensor, context_seq: torch.Tensor, hidden: Optional[Tuple[torch.Tensor, torch.Tensor]] = None):
+        """Forward pass with state and context sequence."""
+        # Encode state
         state_features = self.state_encoder(state)
-        context_features = self.context_encoder(context)
+        
+        # Process context sequence through LSTM
+        # context_seq shape: (batch, seq_len, context_dim)
+        lstm_out, new_hidden = self.context_lstm(context_seq, hidden)
+        
+        # We take the last output or use attention over the whole sequence
+        context_features = lstm_out
         
         # Apply attention to context
+        # Query: state_features, Key/Value: context_features
+        # Ensure state_features has sequence dim for attention
+        query = state_features.unsqueeze(1) 
         context_attended, _ = self.attention(
-            context_features.unsqueeze(1),  # Add sequence dimension
-            context_features.unsqueeze(1),
-            context_features.unsqueeze(1)
+            query,
+            context_features,
+            context_features
         )
         context_attended = context_attended.squeeze(1)
         
@@ -88,7 +99,7 @@ class ContextAwareNetwork(nn.Module):
         action = self.actor(fused_features)
         value = self.critic(fused_features)
         
-        return action, value
+        return action, value, new_hidden
 
 
 class ContextAwareAgent(PPOAgent):
@@ -104,6 +115,14 @@ class ContextAwareAgent(PPOAgent):
         # Replace the actor-critic network with context-aware version
         self.actor_critic = ContextAwareNetwork(state_dim, context_dim, action_dim).to(self.device)
         self.optimizer = torch.optim.Adam(self.actor_critic.parameters(), lr=self.learning_rate)
+        
+        # Adjust context_dim if needed to match feature extraction
+        # Current extraction yields ~22 features. Let's ensure context_dim is enough.
+        if self.context_dim < 32:
+             logger.warning(f"Context dim {self.context_dim} might be too small for all features, increasing to 32")
+             self.context_dim = 32
+             self.actor_critic = ContextAwareNetwork(state_dim, 32, action_dim).to(self.device)
+             self.optimizer = torch.optim.Adam(self.actor_critic.parameters(), lr=self.learning_rate)
         
         # MCP connection
         self.mcp_websocket = None
@@ -272,6 +291,21 @@ class ContextAwareAgent(PPOAgent):
             features.append(len(events) / 10.0)  # Normalized
         else:
             features.append(0.0)
+            
+        # Occupancy Grid features (SLAM-inspired)
+        if "occupancy_grid" in self.context_data:
+            occ_data = self.context_data["occupancy_grid"]
+            occ_grid = np.array(occ_data.get("grid", []))
+            if occ_grid.size > 0:
+                features.extend([
+                    np.mean(occ_grid == -1), # Obstacle density
+                    np.mean(occ_grid == 1),  # Explored free space ratio
+                    np.mean(occ_grid == 0)   # Unknown space ratio
+                ])
+            else:
+                features.extend([0.0] * 3)
+        else:
+            features.extend([0.0] * 3)
         
         # Pad or truncate to context_dim
         while len(features) < self.context_dim:
@@ -301,13 +335,14 @@ class ContextAwareAgent(PPOAgent):
         
         with torch.no_grad():
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            context_tensor = torch.FloatTensor(context_features).unsqueeze(0).to(self.device)
+            # Ensure temporal dimension for LSTM (batch, seq_len, context_dim)
+            context_tensor = torch.FloatTensor(context_features).unsqueeze(0).unsqueeze(0).to(self.device)
             
             if deterministic:
-                action, _ = self.actor_critic(state_tensor, context_tensor)
+                action, _, _ = self.actor_critic(state_tensor, context_tensor)
                 action = action.squeeze(0).cpu().numpy()
             else:
-                action, value = self.actor_critic(state_tensor, context_tensor)
+                action, value, _ = self.actor_critic(state_tensor, context_tensor)
                 action = action.squeeze(0).cpu().numpy()
                 
                 # Store for training

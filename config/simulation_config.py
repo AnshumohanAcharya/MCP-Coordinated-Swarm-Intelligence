@@ -1,7 +1,8 @@
 """Simulation configuration for UAV swarm environment."""
 
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Any
+from typing import Any, Dict, List, Tuple
+
 import yaml
 
 
@@ -11,7 +12,7 @@ class UAVConfig:
     max_speed: float = 5.0  # m/s
     max_acceleration: float = 2.0  # m/s²
     battery_capacity: float = 100.0  # percentage
-    battery_drain_rate: float = 0.1  # per second
+    battery_drain_rate: float = 2.0  # Increased for testing critical phase
     communication_range: float = 50.0  # meters
     sensor_range: float = 30.0  # meters
     payload_capacity: float = 1.0  # kg
@@ -26,6 +27,8 @@ class EnvironmentConfig:
     obstacles: List[Tuple[int, int, int, int]] = None  # (x, y, width, height)
     target_areas: List[Tuple[int, int, int, int]] = None  # (x, y, width, height)
     wind_conditions: Dict[str, float] = None  # wind speed and direction
+    dynamic_events: bool = True  # Whether to spawn dynamic events
+    coverage_grid_resolution: int = 10  # meters per grid cell
     
     def __post_init__(self):
         if self.disaster_zones is None:

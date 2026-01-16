@@ -1,12 +1,13 @@
 """Model Context Protocol server for swarm coordination."""
 
 import asyncio
-import websockets
 import json
-import time
 import signal
 import sys
-from typing import Dict, Set, Optional
+import time
+from typing import Dict, Optional, Set
+
+import websockets
 from loguru import logger
 
 from config.mcp_config import MCPConfig, ContextMessage
@@ -170,7 +171,7 @@ class MCPServer:
             await self.unregister_client(websocket, client_id)
     
     async def periodic_context_update(self):
-        """Periodically update and broadcast context."""
+        """Periodically update and broadcast context with adaptive frequency."""
         while self.running:
             try:
                 # Clean up old data
@@ -179,6 +180,16 @@ class MCPServer:
                 # Get context summary
                 summary = self.context_manager.get_context_summary()
                 logger.debug(f"Context summary: {summary}")
+                
+                # Determine adaptive frequency
+                # Default: 5Hz (0.2s interval)
+                # Critical: 20Hz (0.05s interval)
+                current_frequency = 5.0
+                
+                # Check for critical events in context
+                if self.context_manager.has_critical_events():
+                    current_frequency = 20.0
+                    logger.info("Critical phase detected: Increasing MCP update frequency to 20Hz")
                 
                 # Broadcast periodic context update
                 if self.clients:
@@ -189,12 +200,12 @@ class MCPServer:
                         timestamp=time.time(),
                         context_type="aggregated_context",
                         data=aggregated_context.to_dict(),
-                        priority=1
+                        priority=1 if current_frequency < 10 else 3
                     )
                     
                     await self.message_protocol.broadcast_to_clients(context_message)
                 
-                await asyncio.sleep(1.0 / self.config.context_update_frequency)
+                await asyncio.sleep(1.0 / current_frequency)
                 
             except Exception as e:
                 logger.error(f"Error in periodic context update: {e}")
