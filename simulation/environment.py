@@ -1,18 +1,19 @@
 """Main simulation environment for UAV swarm coordination."""
 
-import numpy as np
-import gymnasium as gym
-from gymnasium import spaces
 import asyncio
-import websockets
 import json
 import time
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import gymnasium as gym
+import numpy as np
+import websockets
+from gymnasium import spaces
 from loguru import logger
 
 from .uav import UAV
 from .disaster_scenario import DisasterScenario
-from .visualization import SwarmVisualizer
+# from .visualization import SwarmVisualizer
 from config.simulation_config import SimulationConfig
 from config.mcp_config import ContextMessage
 
@@ -34,16 +35,17 @@ class SwarmEnvironment(gym.Env):
         self.scenario = DisasterScenario(config.environment_config)
         
         # Initialize visualization
-        self.visualizer = SwarmVisualizer(config) if config.render else None
+        if config.render:
+            from .visualization import SwarmVisualizer
+            self.visualizer = SwarmVisualizer(config)
+        else:
+            self.visualizer = None
         
         # MCP connection
         self.mcp_websocket = None
         self.mcp_connected = False
         # Prevent concurrent recv() on the same websocket
         self._mcp_receive_lock = asyncio.Lock()
-        # Queue for pending MCP updates (collected synchronously, sent asynchronously)
-        self._pending_mcp_updates = []
-        self._mcp_update_task = None
         
         # Environment state
         self.current_step = 0
@@ -137,109 +139,56 @@ class SwarmEnvironment(gym.Env):
         
         await self.mcp_websocket.send(json.dumps(registration_message.to_dict()))
     
-    async def _mcp_update_processor(self):
-        """Background task that processes queued MCP updates."""
-        logger.info("MCP update processor started")
-        iteration = 0
-        while self.mcp_connected:
-            try:
-                iteration += 1
-                # Process pending updates
-                if self._pending_mcp_updates:
-                    update_data = self._pending_mcp_updates.pop(0)
-                    await self._send_mcp_updates(update_data)
-                
-                # Log every 20 iterations (every ~1 second) to verify it's running
-                if iteration % 20 == 0:
-                    logger.debug(f"MCP update processor running (iteration {iteration}, queue size: {len(self._pending_mcp_updates)})")
-                
-                # Small delay to avoid busy-waiting
-                await asyncio.sleep(0.05)  # 50ms
-            except asyncio.CancelledError:
-                logger.info("MCP update processor cancelled")
-                break
-            except Exception as e:
-                logger.error(f"Error in MCP update processor: {e}", exc_info=True)
-                await asyncio.sleep(0.1)
-    
-    async def _send_mcp_updates(self, update_data: List[Dict]):
-        """Send MCP updates for UAVs. This is called asynchronously."""
-        # Double-check connection state
-        if not self.mcp_connected or self.mcp_websocket is None:
-            logger.warning(f"MCP not connected when trying to send updates (step {self.current_step})")
+    async def _update_mcp_context(self):
+        """Update MCP server with current UAV states."""
+        if not self.mcp_connected:
             return
         
-        try:
-            update_count = 0
-            for uav_data in update_data:
-                # Re-check connection before each send
-                if not self.mcp_connected or self.mcp_websocket is None:
-                    logger.warning(f"Connection lost during update loop at step {self.current_step}")
-                    break
-                
-                uav_id = uav_data["uav_id"]
-                
-                # Send position update
-                position_message = ContextMessage(
-                    message_type="update",
-                    sender_id=uav_id,
-                    timestamp=time.time(),
-                    context_type="position",
-                    data=uav_data["position"]
-                )
-                
-                try:
-                    await self.mcp_websocket.send(json.dumps(position_message.to_dict()))
-                    update_count += 1
-                except websockets.exceptions.ConnectionClosed:
-                    logger.warning(f"MCP connection closed while sending position update for {uav_id}")
-                    self.mcp_connected = False
-                    self.mcp_websocket = None
-                    break
-                except Exception as e:
-                    logger.error(f"Error sending position update for {uav_id}: {e}", exc_info=True)
-                    break
-                
-                # Send battery update
-                battery_message = ContextMessage(
-                    message_type="update",
-                    sender_id=uav_id,
-                    timestamp=time.time(),
-                    context_type="battery",
-                    data=uav_data["battery"]
-                )
-                
-                try:
-                    await self.mcp_websocket.send(json.dumps(battery_message.to_dict()))
-                    update_count += 1
-                except websockets.exceptions.ConnectionClosed:
-                    logger.warning(f"MCP connection closed while sending battery update for {uav_id}")
-                    self.mcp_connected = False
-                    self.mcp_websocket = None
-                    break
-                except Exception as e:
-                    logger.error(f"Error sending battery update for {uav_id}: {e}", exc_info=True)
-                    break
+        for uav in self.uavs:
+            # SLAM integration: Detect nearby obstacles
+            obstacles_in_range = self.scenario.get_obstacles_in_range(
+                uav.state.x, uav.state.y, uav.sensor_range
+            )
+            sensor_data = {
+                "obstacles": [{"x": obs.x, "y": obs.y} for obs in obstacles_in_range]
+            }
             
-            # Log successful updates (only log every 50 steps to reduce noise)
-            if self.current_step % 50 == 0:
-                if update_count > 0:
-                    logger.info(f"✓ Sent {update_count} MCP updates for {len(update_data)} UAVs (step {self.current_step})")
-                else:
-                    logger.warning(f"No MCP updates sent at step {self.current_step} (update_count=0)")
-        
-        except websockets.exceptions.ConnectionClosed as e:
-            logger.warning(f"MCP connection closed during send (step {self.current_step}): {e}")
-            self.mcp_connected = False
-            self.mcp_websocket = None
-        except Exception as e:
-            logger.error(f"Unexpected error sending MCP updates (step {self.current_step}): {e}", exc_info=True)
-            self.mcp_connected = False
-            self.mcp_websocket = None
+            # Send position update
+            position_message = ContextMessage(
+                message_type="update",
+                sender_id=uav.uav_id,
+                timestamp=time.time(),
+                context_type="position",
+                data={
+                    "x": float(uav.state.x),
+                    "y": float(uav.state.y),
+                    "z": float(uav.state.z),
+                    "battery": float(uav.state.battery),
+                    "sensor_range": float(uav.sensor_range),
+                    "communication_range": float(uav.communication_range),
+                    "sensor_data": sensor_data
+                }
+            )
+            
+            await self.mcp_websocket.send(json.dumps(position_message.to_dict()))
+            
+            # Send battery update
+            battery_message = ContextMessage(
+                message_type="update",
+                sender_id=uav.uav_id,
+                timestamp=time.time(),
+                context_type="battery",
+                data={
+                    "battery_level": uav.state.battery,
+                    "status": uav.state.status
+                }
+            )
+            
+            await self.mcp_websocket.send(json.dumps(battery_message.to_dict()))
     
     async def _receive_mcp_context(self):
         """Receive context updates from MCP server."""
-        if not self.mcp_connected or self.mcp_websocket is None:
+        if not self.mcp_connected:
             return
         
         # Ensure only one recv is active at a time
@@ -257,13 +206,8 @@ class SwarmEnvironment(gym.Env):
                         
             except asyncio.TimeoutError:
                 pass  # No message available
-            except websockets.exceptions.ConnectionClosed:
-                logger.debug("MCP connection closed during receive. Disabling MCP.")
-                self.mcp_connected = False
-                self.mcp_websocket = None
             except Exception as e:
-                logger.debug(f"Error receiving MCP context: {e}")
-                # Don't disable on transient errors
+                logger.error(f"Error receiving MCP context: {e}")
     
     def step(self, actions: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """Execute one step in the environment."""
@@ -325,47 +269,12 @@ class SwarmEnvironment(gym.Env):
         # Update disaster scenario
         self.scenario.update(dt)
         
-        # Collect MCP update data synchronously and queue it
-        # A background task will send these updates
-        if self.mcp_connected and self.mcp_websocket is not None:
-            # Collect update data synchronously
-            update_data = []
-            for uav in self.uavs:
-                update_data.append({
-                    "uav_id": uav.uav_id,
-                    "position": {"x": uav.state.x, "y": uav.state.y, "z": uav.state.z,
-                                "sensor_range": uav.sensor_range, "communication_range": uav.communication_range},
-                    "battery": {"battery_level": uav.state.battery, "status": uav.state.status}
-                })
-            
-            # Add to queue (will be processed by background task)
-            self._pending_mcp_updates.append(update_data)
-            # Keep queue size reasonable
-            if len(self._pending_mcp_updates) > 10:
-                self._pending_mcp_updates.pop(0)
-            
-            # Log queue status occasionally
-            if self.current_step % 50 == 0:
-                logger.debug(f"Queued MCP update at step {self.current_step} (queue size: {len(self._pending_mcp_updates)})")
-    
-    def _handle_mcp_task_error(self, task):
-        """Handle errors from MCP async tasks."""
-        try:
-            if task.done():
-                task.result()  # This will raise any exception that occurred
-            else:
-                logger.warning(f"MCP task not done when error handler called at step {self.current_step}")
-        except websockets.exceptions.ConnectionClosed:
-            # Connection closed is expected if server stops
-            if self.mcp_connected:
-                logger.warning(f"MCP connection closed at step {self.current_step}")
-                self.mcp_connected = False
-                self.mcp_websocket = None
-        except asyncio.CancelledError:
-            logger.warning(f"MCP task cancelled at step {self.current_step}")
-        except Exception as e:
-            # Log other errors but don't crash
-            logger.error(f"MCP task error at step {self.current_step}: {e}", exc_info=True)
+        # Update MCP context (async)
+        if self.mcp_connected:
+            asyncio.create_task(self._update_mcp_context())
+            # Avoid overlapping recv tasks
+            if not self._mcp_receive_lock.locked():
+                asyncio.create_task(self._receive_mcp_context())
     
     def _get_observations(self) -> np.ndarray:
         """Get observations for all UAVs."""
@@ -517,10 +426,6 @@ class SwarmEnvironment(gym.Env):
         if self.visualizer:
             self.visualizer.cleanup()
         
-        # Cancel background update task
-        if self._mcp_update_task:
-            self._mcp_update_task.cancel()
-        
         if self.mcp_websocket:
             asyncio.create_task(self.mcp_websocket.close())
         
@@ -529,12 +434,6 @@ class SwarmEnvironment(gym.Env):
     async def start_mcp_connection(self):
         """Start MCP connection."""
         await self._connect_mcp()
-        # Start background task to process MCP updates
-        if self.mcp_connected:
-            self._mcp_update_task = asyncio.create_task(self._mcp_update_processor())
-            logger.info("Started MCP update processor background task")
-        else:
-            logger.warning("MCP not connected, cannot start update processor")
     
     def get_environment_info(self) -> Dict[str, Any]:
         """Get information about the environment."""

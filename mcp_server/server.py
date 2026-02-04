@@ -1,12 +1,13 @@
 """Model Context Protocol server for swarm coordination."""
 
 import asyncio
-import websockets
 import json
-import time
 import signal
 import sys
-from typing import Dict, Set, Optional, Any
+import time
+from typing import Dict, Optional, Set
+
+import websockets
 from loguru import logger
 
 from config.mcp_config import MCPConfig, ContextMessage
@@ -21,8 +22,7 @@ class MCPServer:
         self.config = config
         self.context_manager = ContextManager(config)
         self.message_protocol = MessageProtocol()
-        # Use Any instead of deprecated WebSocketServerProtocol
-        self.clients: Set[Any] = set()
+        self.clients: Set[websockets.WebSocketServerProtocol] = set()
         self.running = False
         
         # Register message handlers
@@ -40,12 +40,10 @@ class MCPServer:
     
     async def _handle_update(self, client_id: str, message: ContextMessage) -> Optional[str]:
         """Handle context update from client."""
-        # Use sender_id (UAV ID) as the key, not websocket client_id
-        uav_id = message.sender_id
-        logger.info(f"Received update from {uav_id} (context_type: {message.context_type})")
+        logger.info(f"Received update from {client_id}: {message.context_type}")
         
-        # Update context manager with new data using UAV ID
-        self.context_manager.update_client_data(uav_id, message)
+        # Update context manager with new data
+        self.context_manager.update_client_data(client_id, message)
         
         # Broadcast aggregated context to all clients
         aggregated_context = self.context_manager.aggregate_context()
@@ -117,15 +115,9 @@ class MCPServer:
         """Handle client registration."""
         logger.info(f"Client {client_id} registered")
         
-        # Update client info without overwriting websocket
+        # Register client with message protocol
         client_info = message.data.get("client_info", {})
-        if client_id in self.message_protocol.registered_clients:
-            # Update info but keep existing websocket
-            self.message_protocol.registered_clients[client_id]["info"] = client_info
-        else:
-            # New registration - websocket should already be set by register_client
-            # But if not, we can't register without a websocket
-            logger.warning(f"Client {client_id} not found in registered clients during register message")
+        self.message_protocol.register_client(client_id, None, client_info)
         
         # Send registration confirmation
         response_message = ContextMessage(
@@ -139,19 +131,19 @@ class MCPServer:
         
         return self.message_protocol.serialize_message(response_message)
     
-    async def register_client(self, websocket: Any, client_id: str):
+    async def register_client(self, websocket: websockets.WebSocketServerProtocol, client_id: str):
         """Register a new client connection."""
         self.clients.add(websocket)
         self.message_protocol.register_client(client_id, websocket)
         logger.info(f"Client {client_id} connected. Total clients: {len(self.clients)}")
     
-    async def unregister_client(self, websocket: Any, client_id: str):
+    async def unregister_client(self, websocket: websockets.WebSocketServerProtocol, client_id: str):
         """Unregister a client connection."""
         self.clients.discard(websocket)
         self.message_protocol.unregister_client(client_id)
         logger.info(f"Client {client_id} disconnected. Total clients: {len(self.clients)}")
     
-    async def handle_client(self, websocket: Any, path: str = None):
+    async def handle_client(self, websocket: websockets.WebSocketServerProtocol, path: str = None):
         """Handle individual client connection."""
         client_id = f"client_{int(time.time() * 1000)}"  # Simple ID generation
         
@@ -164,24 +156,12 @@ class MCPServer:
                     response = await self.message_protocol.handle_message(client_id, message)
                     
                     if response:
-                        try:
-                            await websocket.send(response)
-                        except websockets.exceptions.ConnectionClosed:
-                            logger.debug(f"Connection closed while sending response to {client_id}")
-                            break
-                        except Exception as e:
-                            logger.warning(f"Error sending response to {client_id}: {e}")
-                            # Don't break - continue processing other messages
+                        await websocket.send(response)
                         
                 except Exception as e:
-                    logger.error(f"Error handling message from {client_id}: {e}", exc_info=True)
-                    try:
-                        error_response = self.message_protocol.create_error_response(str(e))
-                        await websocket.send(error_response)
-                    except (websockets.exceptions.ConnectionClosed, Exception):
-                        # Connection already closed or can't send error response
-                        logger.debug(f"Could not send error response to {client_id}")
-                        break
+                    logger.error(f"Error handling message from {client_id}: {e}")
+                    error_response = self.message_protocol.create_error_response(str(e))
+                    await websocket.send(error_response)
                     
         except websockets.exceptions.ConnectionClosed:
             logger.info(f"Client {client_id} connection closed")
@@ -191,7 +171,7 @@ class MCPServer:
             await self.unregister_client(websocket, client_id)
     
     async def periodic_context_update(self):
-        """Periodically update and broadcast context."""
+        """Periodically update and broadcast context with adaptive frequency."""
         while self.running:
             try:
                 # Clean up old data
@@ -200,6 +180,16 @@ class MCPServer:
                 # Get context summary
                 summary = self.context_manager.get_context_summary()
                 logger.debug(f"Context summary: {summary}")
+                
+                # Determine adaptive frequency
+                # Default: 5Hz (0.2s interval)
+                # Critical: 20Hz (0.05s interval)
+                current_frequency = 5.0
+                
+                # Check for critical events in context
+                if self.context_manager.has_critical_events():
+                    current_frequency = 20.0
+                    logger.info("Critical phase detected: Increasing MCP update frequency to 20Hz")
                 
                 # Broadcast periodic context update
                 if self.clients:
@@ -210,12 +200,12 @@ class MCPServer:
                         timestamp=time.time(),
                         context_type="aggregated_context",
                         data=aggregated_context.to_dict(),
-                        priority=1
+                        priority=1 if current_frequency < 10 else 3
                     )
                     
                     await self.message_protocol.broadcast_to_clients(context_message)
                 
-                await asyncio.sleep(1.0 / self.config.context_update_frequency)
+                await asyncio.sleep(1.0 / current_frequency)
                 
             except Exception as e:
                 logger.error(f"Error in periodic context update: {e}")
@@ -239,19 +229,10 @@ class MCPServer:
                 max_size=self.config.max_message_size,
                 ping_interval=self.config.heartbeat_interval,
                 ping_timeout=self.config.message_timeout
-            ) as server:
+            ):
                 logger.info("MCP server started successfully")
-                logger.info(f"Server listening on ws://{self.config.host}:{self.config.port}")
                 await asyncio.Future()  # Run forever
                 
-        except OSError as e:
-            if "address already in use" in str(e).lower() or e.errno == 48:
-                logger.error(f"Port {self.config.port} is already in use!")
-                logger.error("Another MCP server instance may be running.")
-                logger.error("Solution: Kill the existing process or use a different port.")
-                logger.error(f"To find and kill: lsof -ti:{self.config.port} | xargs kill -9")
-            else:
-                logger.error(f"Error starting MCP server: {e}")
         except Exception as e:
             logger.error(f"Error starting MCP server: {e}")
         finally:

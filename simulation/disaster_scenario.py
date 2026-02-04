@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import time
 
 from config.simulation_config import EnvironmentConfig
-from .tidal_data import get_tidal_loader
+from .data_loader import DisasterDatasetLoader
 
 
 @dataclass
@@ -21,6 +21,7 @@ class DisasterZone:
     priority: int  # 1-4 (low to critical)
     discovered: bool = False
     last_updated: float = 0.0
+    radius: float = 50.0 # Added for circular zones support
 
 
 @dataclass
@@ -68,13 +69,18 @@ class DisasterScenario:
         self.width = config.width
         self.height = config.height
         
+        # Initialize Dataset Loader (Vast Dataset Integration)
+        self.dataset_loader = DisasterDatasetLoader(dataset_type="wildfire")
+        self.timestep_counter = 0
+        
         # Initialize disaster zones
         self.disaster_zones = []
         for x, y, w, h in config.disaster_zones:
             zone = DisasterZone(
                 x=x, y=y, width=w, height=h,
                 severity=random.uniform(0.5, 1.0),
-                priority=random.randint(2, 4)
+                priority=random.randint(2, 4),
+                radius=w/2 # Default radius from config
             )
             self.disaster_zones.append(zone)
         
@@ -103,20 +109,9 @@ class DisasterScenario:
         self.event_counter = 0
         
         # Environmental conditions
-        self.base_wind_speed = config.wind_conditions["speed"]
+        self.wind_speed = config.wind_conditions["speed"]
         self.wind_direction = config.wind_conditions["direction"]
-        self.wind_speed = self.base_wind_speed
         self.weather_conditions = "clear"
-        
-        # Tidal data integration
-        self.tidal_loader = None
-        self.simulation_start_time = time.time()
-        try:
-            self.tidal_loader = get_tidal_loader()
-            print("Tidal data loaded successfully")
-        except Exception as e:
-            print(f"Warning: Could not load tidal data: {e}")
-            self.tidal_loader = None
         
         # Coverage tracking
         grid_h = int(self.height // 10)
@@ -141,11 +136,42 @@ class DisasterScenario:
         self._update_target_coverage()
     
     def _update_disaster_zones(self, dt: float):
-        """Update disaster zone dynamics."""
+        """Update disaster zone dynamics using historical/simulated vast dataset."""
+        self.timestep_counter += 1
+        
+        # Get dynamic zones from dataset
+        dataset_zones = self.dataset_loader.get_active_zones(self.timestep_counter)
+        
+        # Merge dataset zones into existing scenario zones or replace them
+        # For simplicity, we'll keep a mix of static config zones and dynamic dataset zones
+        active_dataset_zones = []
+        for d_zone in dataset_zones:
+            zone = DisasterZone(
+                x=d_zone["x"],
+                y=d_zone["y"],
+                width=d_zone["radius"]*2,
+                height=d_zone["radius"]*2,
+                severity=d_zone["severity"],
+                priority=4 if d_zone["severity"] > 0.8 else 3,
+                radius=d_zone["radius"]
+            )
+            active_dataset_zones.append(zone)
+            
+        # Update our main disaster zones list with dynamic data
+        # We'll keep the first few from config and append dynamic ones
+        self.disaster_zones = self.disaster_zones[:len(self.config.disaster_zones)] + active_dataset_zones
+
+        import random
         for zone in self.disaster_zones:
             # Simulate zone evolution (e.g., fire spreading)
             if zone.severity < 1.0:
                 zone.severity = min(1.0, zone.severity + random.uniform(0.001, 0.01) * dt)
+            
+            # Innovative feature: Dynamic spreading of critical zones
+            if zone.severity > 0.8 and hasattr(zone, 'radius'):
+                if random.random() < 0.02: # 2% chance per update
+                    zone.radius += 1.0 * dt
+                    zone.radius = min(zone.radius, 150.0) # Cap spread
             
             # Update priority based on severity
             if zone.severity > 0.8:
@@ -190,22 +216,9 @@ class DisasterScenario:
     
     def _update_environmental_conditions(self, dt: float):
         """Update environmental conditions."""
-        # Update based on tidal data if available
-        if self.tidal_loader is not None:
-            simulation_time = time.time() - self.simulation_start_time
-            tidal_conditions = self.tidal_loader.get_environmental_conditions(simulation_time)
-            
-            # Modify wind speed based on tidal pressure
-            wind_factor = tidal_conditions.get('wind_modification_factor', 1.0)
-            self.wind_speed = self.base_wind_speed * wind_factor
-            
-            # Add some random variation
-            wind_change = random.uniform(-0.05, 0.05) * dt
-            self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
-        else:
-            # Fallback to random wind changes
-            wind_change = random.uniform(-0.1, 0.1) * dt
-            self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
+        # Simulate wind changes
+        wind_change = random.uniform(-0.1, 0.1) * dt
+        self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
         
         # Simulate weather changes
         if random.random() < 0.0001 * dt:  # Very low probability
@@ -288,7 +301,7 @@ class DisasterScenario:
     
     def get_environmental_conditions(self) -> Dict[str, Any]:
         """Get current environmental conditions."""
-        conditions = {
+        return {
             "wind_speed": self.wind_speed,
             "wind_direction": self.wind_direction,
             "weather": self.weather_conditions,
@@ -296,18 +309,6 @@ class DisasterScenario:
             "humidity": 60.0,  # Simulated
             "visibility": 10.0 if self.weather_conditions == "clear" else 5.0
         }
-        
-        # Add tidal data if available
-        if self.tidal_loader is not None:
-            simulation_time = time.time() - self.simulation_start_time
-            tidal_conditions = self.tidal_loader.get_environmental_conditions(simulation_time)
-            conditions.update({
-                "tidal_pressure": tidal_conditions.get('tidal_pressure', 0.0),
-                "tidal_phase": tidal_conditions.get('tidal_phase', 'unknown'),
-                "wind_modification_factor": tidal_conditions.get('wind_modification_factor', 1.0)
-            })
-        
-        return conditions
     
     def get_priority_areas(self) -> List[Tuple[float, float, float, float, int]]:
         """Get all priority areas (disaster zones + target areas) with priorities."""
