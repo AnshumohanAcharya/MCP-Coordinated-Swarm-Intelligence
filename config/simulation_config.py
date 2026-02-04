@@ -56,6 +56,7 @@ class RLConfig:
     target_update_frequency: int = 100
     training_frequency: int = 4
     max_episode_length: int = 5000
+    max_steps_per_episode: int = 500  # Maximum steps per episode for training
     total_timesteps: int = 1000000
 
 
@@ -65,6 +66,7 @@ class SimulationConfig:
     num_uavs: int = 5
     simulation_time: float = 300.0  # seconds
     time_step: float = 0.1  # seconds
+    simulation_dt: float = 0.033  # Time step for simulation (30 FPS)
     render: bool = True
     render_fps: int = 30
     save_data: bool = True

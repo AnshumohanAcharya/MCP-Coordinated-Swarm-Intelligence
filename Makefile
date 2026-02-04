@@ -35,6 +35,13 @@ help:
 	@echo "  dashboard          Start the web dashboard (Backend & Frontend)"
 	@echo "  test               Run all unit tests"
 	@echo "  clean              Remove logs, saved models, and results"
+	@echo ""
+	@echo "Review III Targets:"
+	@echo "  review3-quick      Quick demo for Review III (5-10 min)"
+	@echo "  review3-full       Full demo for Review III (30-60 min)"
+	@echo "  rl-compare         Compare RL algorithms (PPO, SAC, TD3, A2C, DQN)"
+	@echo "  slam-demo          Demonstrate SLAM integration"
+	@echo "  results            Open results directory"
 
 venv:
 	@echo "Creating virtual environment..."
@@ -88,6 +95,32 @@ dashboard:
 
 test:
 	$(PYTHON) -m pytest tests/
+
+# Review III Targets
+review3-quick:
+	@echo "Running Review III Quick Demo (5-10 minutes)..."
+	$(PYTHON) run_review_iii_demo.py --quick
+
+review3-full:
+	@echo "Running Review III Full Demo (30-60 minutes)..."
+	$(PYTHON) run_review_iii_demo.py --full
+
+rl-compare:
+	@echo "Running RL Algorithm Comparison..."
+	$(PYTHON) experiments/rl_comparison.py --episodes 100 --num_uavs 3
+
+slam-demo:
+	@echo "Running SLAM Integration Demo..."
+	$(PYTHON) experiments/slam_comparison.py --episodes 20 --num_uavs 3
+
+results:
+	@echo "Opening results directory..."
+	@if [ -d "results/review_iii" ]; then \
+		open results/review_iii 2>/dev/null || xdg-open results/review_iii 2>/dev/null || echo "Results directory: results/review_iii"; \
+	else \
+		echo "No results found. Run 'make review3-quick' or 'make review3-full' first."; \
+	fi
+
 
 clean:
 	rm -rf $(LOGS_DIR)/*

@@ -11,6 +11,10 @@ stable-baselines3>=1.6.0
 gym>=0.21.0
 gymnasium>=0.26.0
 
+# SLAM and Computer Vision (Review III)
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0
+
 # Model Context Protocol (WebSocket-based implementation)
 websockets>=10.0
 asyncio-mqtt>=0.11.0
@@ -38,6 +42,7 @@ mypy>=0.950
 # Visualization
 plotly>=5.10.0
 dash>=2.6.0
+seaborn>=0.12.0
 
 # Configuration
 pyyaml>=6.0
