@@ -8,6 +8,7 @@ import time
 
 from config.simulation_config import EnvironmentConfig
 from .tidal_data import get_tidal_loader
+from .external_data import get_data_loader
 
 
 @dataclass
@@ -108,15 +109,22 @@ class DisasterScenario:
         self.wind_speed = self.base_wind_speed
         self.weather_conditions = "clear"
         
-        # Tidal data integration
+        # External data / tidal integration
+        self.data_loader = None
         self.tidal_loader = None
         self.simulation_start_time = time.time()
-        try:
-            self.tidal_loader = get_tidal_loader()
-            print("Tidal data loaded successfully")
-        except Exception as e:
-            print(f"Warning: Could not load tidal data: {e}")
-            self.tidal_loader = None
+        data_source = getattr(config, "data_source", None)
+        if data_source:
+            self.data_loader = get_data_loader(data_source)
+            if self.data_loader:
+                print(f"External data loaded: {data_source}")
+        if self.data_loader is None:
+            try:
+                self.tidal_loader = get_tidal_loader()
+                print("Tidal data loaded successfully")
+            except Exception as e:
+                print(f"Warning: Could not load tidal data: {e}")
+                self.tidal_loader = None
         
         # Coverage tracking
         grid_h = int(self.height // 10)
@@ -190,22 +198,24 @@ class DisasterScenario:
     
     def _update_environmental_conditions(self, dt: float):
         """Update environmental conditions."""
-        # Update based on tidal data if available
-        if self.tidal_loader is not None:
-            simulation_time = time.time() - self.simulation_start_time
+        simulation_time = time.time() - self.simulation_start_time
+        base_wind = self.base_wind_speed
+
+        # Use unified data loader if available (Vizag, NOAA, AMOVFLY)
+        if self.data_loader is not None:
+            wind = self.data_loader.get_wind_factor(simulation_time, None, None)
+            self.wind_speed = base_wind * wind
+        elif self.tidal_loader is not None:
             tidal_conditions = self.tidal_loader.get_environmental_conditions(simulation_time)
-            
-            # Modify wind speed based on tidal pressure
             wind_factor = tidal_conditions.get('wind_modification_factor', 1.0)
-            self.wind_speed = self.base_wind_speed * wind_factor
-            
-            # Add some random variation
-            wind_change = random.uniform(-0.05, 0.05) * dt
-            self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
+            self.wind_speed = base_wind * wind_factor
         else:
-            # Fallback to random wind changes
             wind_change = random.uniform(-0.1, 0.1) * dt
             self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
+
+        # Add small random variation
+        wind_change = random.uniform(-0.05, 0.05) * dt
+        self.wind_speed = max(0, min(10, self.wind_speed + wind_change))
         
         # Simulate weather changes
         if random.random() < 0.0001 * dt:  # Very low probability
