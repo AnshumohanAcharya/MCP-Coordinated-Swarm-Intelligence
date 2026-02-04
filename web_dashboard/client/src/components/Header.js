@@ -95,6 +95,12 @@ function Header({ connectionStatus }) {
           >
             Agents
           </NavLink>
+          <NavLink 
+            to="/comparison" 
+            className={location.pathname === '/comparison' ? 'active' : ''}
+          >
+            Comparison
+          </NavLink>
         </Nav>
         <StatusIndicator>
           <StatusDot status={connectionStatus} />

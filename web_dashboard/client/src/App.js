@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard';
 import SimulationView from './components/SimulationView';
 import PerformanceView from './components/PerformanceView';
 import AgentView from './components/AgentView';
+import ComparisonView from './components/ComparisonView';
 import { SocketContext } from './services/SocketService';
 
 const theme = {
@@ -115,6 +116,7 @@ function App() {
                 <Route path="/simulation" element={<SimulationView />} />
                 <Route path="/performance" element={<PerformanceView />} />
                 <Route path="/agents" element={<AgentView />} />
+                <Route path="/comparison" element={<ComparisonView />} />
               </Routes>
             </MainContent>
           </AppContainer>
