@@ -298,24 +298,26 @@ class SwarmEnvironment(gym.Env):
     def _calculate_reward(self) -> float:
         """Calculate reward for the current step."""
         reward = 0.0
-        
+        reward_mode = getattr(self.config, "reward_mode", "default")
+
         # Coverage reward
         coverage_reward = self.scenario.get_coverage_percentage() * 0.01
         reward += coverage_reward
-        
+
         # Battery efficiency reward
         avg_battery = np.mean([uav.state.battery for uav in self.uavs])
         battery_reward = (avg_battery / 100.0) * 0.1
         reward += battery_reward
-        
-        # Collision penalty
+
+        # Collision penalty (balanced mode: -0.1 per collision; default: -1.0)
+        collision_weight = 0.1 if reward_mode == "balanced" else 1.0
         collision_penalty = 0.0
         for uav in self.uavs:
             if self.scenario.check_collision(uav.state.x, uav.state.y, uav.state.z):
-                collision_penalty -= 1.0
+                collision_penalty -= collision_weight
                 self.performance_metrics["collision_count"] += 1
         reward += collision_penalty
-        
+
         # Communication reward
         communication_reward = 0.0
         for i, uav1 in enumerate(self.uavs):
@@ -323,14 +325,14 @@ class SwarmEnvironment(gym.Env):
                 if uav1.can_communicate_with(uav2):
                     communication_reward += 0.01
         reward += communication_reward
-        
+
         # Target area reward
         target_reward = 0.0
         for target in self.scenario.target_areas:
             if target.current_coverage >= target.coverage_required:
                 target_reward += target.priority * 0.1
         reward += target_reward
-        
+
         return reward
     
     def _check_termination(self) -> bool:

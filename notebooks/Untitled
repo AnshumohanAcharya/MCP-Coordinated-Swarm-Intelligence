@@ -1,0 +1,7 @@
+2026-02-04 01:11:21.122 | ERROR    | simulation.environment:_send_mcp_updates:200 - Error sending position update for uav_0: Object of type float32 is not JSON serializable
+2026-02-04 01:11:21.317 | ERROR    | simulation.environment:_send_mcp_updates:200 - Error sending position update for uav_0: Object of type float32 is not JSON serializable
+2026-02-04 01:11:21.373 | DEBUG    | simulation.environment:_update_environment:349 - Queued MCP update at step 50 (queue size: 10)
+2026-02-04 01:11:21.480 | ERROR    | simulation.environment:_send_mcp_updates:200 - Error sending position update for uav_0: Object of type float32 is not JSON serializable
+2026-02-04 01:11:21.646 | ERROR    | simulation.environment:_send_mcp_updates:200 - Error sending position update for uav_0: Object of type float32 is not JSON serializable
+2026-02-04 01:11:21.714 | DEBUG    | simulation.environment:_update_environment:349 - Queued MCP update at step 100 (queue size: 10)
+2026-02-04 01:11:21.826 | ERROR    | simulation.environment:_send_mcp_updates:200 - Error sending position

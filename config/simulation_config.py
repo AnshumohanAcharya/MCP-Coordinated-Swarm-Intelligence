@@ -71,6 +71,7 @@ class SimulationConfig:
     render_fps: int = 30
     save_data: bool = True
     data_save_path: str = "data/simulation_data.json"
+    reward_mode: str = "default"  # "default" (collision=-1.0) or "balanced" (collision=-0.1)
     
     # Sub-configurations
     uav_config: UAVConfig = None
@@ -130,6 +131,7 @@ class SimulationConfig:
                 'obstacles': self.environment_config.obstacles,
                 'target_areas': self.environment_config.target_areas,
                 'wind_conditions': self.environment_config.wind_conditions,
+                'data_source': self.environment_config.data_source,
             },
             'rl': {
                 'algorithm': self.rl_config.algorithm,
