@@ -1,10 +1,11 @@
 """UAV (Unmanned Aerial Vehicle) implementation for swarm simulation."""
 
-import numpy as np
 import math
-from typing import Dict, List, Tuple, Optional, Any
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 from config.simulation_config import UAVConfig
 
@@ -64,6 +65,7 @@ class UAV:
         # MCP context integration
         self.context_data = {}
         self.last_context_update = 0.0
+        self.episode_rewards = []
     
     def update_physics(self, dt: float):
         """Update UAV physics based on current acceleration."""
@@ -256,6 +258,10 @@ class UAV:
             "last_communication": self.state.last_communication
         }
     
+    def add_reward(self, reward: float):
+        """Add reward to UAV (placeholder for metrics)."""
+        self.episode_rewards.append(reward)
+
     def reset(self, initial_position: Tuple[float, float, float] = None):
         """Reset UAV to initial state."""
         if initial_position is None:
@@ -279,3 +285,4 @@ class UAV:
         self.covered_areas = []
         self.context_data = {}
         self.current_action = np.zeros(3)
+        self.episode_rewards = []

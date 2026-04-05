@@ -3,6 +3,7 @@
 import pygame
 import numpy as np
 import math
+import time
 from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass
 
@@ -107,18 +108,37 @@ class SwarmVisualizer:
         # Draw disaster zones
         for zone in scenario.disaster_zones:
             x, y = self.world_to_screen(zone.x, zone.y)
-            w = int(zone.width * self.scale * self.zoom)
-            h = int(zone.height * self.scale * self.zoom)
             
-            if -w < x < self.width + w and -h < y < self.height + h:
-                # Color based on severity
-                severity_color = (
-                    int(255 * zone.severity),
-                    int(100 * (1 - zone.severity)),
-                    int(100 * (1 - zone.severity))
-                )
-                pygame.draw.rect(self.screen, severity_color, (x, y, w, h))
-                pygame.draw.rect(self.screen, (255, 0, 0), (x, y, w, h), 2)
+            # Use radius or width/height
+            if hasattr(zone, 'radius'):
+                r = int(zone.radius * self.scale * self.zoom)
+                if -r < x < self.width + r and -r < y < self.height + r:
+                    # Circular zone
+                    severity_color = (
+                        int(255 * zone.severity),
+                        int(100 * (1 - zone.severity)),
+                        int(100 * (1 - zone.severity))
+                    )
+                    # Add alpha for pulse if critical
+                    if zone.severity > 0.8:
+                         pulse = int(10 * np.sin(time.time() * 5))
+                         r += pulse
+                    
+                    pygame.draw.circle(self.screen, severity_color, (int(x), int(y)), int(r))
+                    pygame.draw.circle(self.screen, (255, 0, 0), (int(x), int(y)), int(r), 2)
+            else:
+                w = int(zone.width * self.scale * self.zoom)
+                h = int(zone.height * self.scale * self.zoom)
+                
+                if -w < x < self.width + w and -h < y < self.height + h:
+                    # Color based on severity
+                    severity_color = (
+                        int(255 * zone.severity),
+                        int(100 * (1 - zone.severity)),
+                        int(100 * (1 - zone.severity))
+                    )
+                    pygame.draw.rect(self.screen, severity_color, (x, y, w, h))
+                    pygame.draw.rect(self.screen, (255, 0, 0), (x, y, w, h), 2)
         
         # Draw obstacles
         for obstacle in scenario.obstacles:
