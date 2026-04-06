@@ -1,0 +1,113 @@
+{
+  "timestamp": "2026-04-06 00:43:19",
+  "config": {
+    "failure_episodes": 5,
+    "comm_episodes": 5,
+    "scale_episodes": 5,
+    "num_uavs": 4,
+    "gps_denied": false
+  },
+  "experiments": {
+    "failure_resilience": {
+      "runtime_s": 4.1,
+      "key_metrics": {
+        "MCP \u2013 No Failure": {
+          "final_coverage": 11.12,
+          "final_pw_coverage": 14.667506457421462,
+          "recovery_delta": {}
+        },
+        "MCP \u2013 1 Failure": {
+          "final_coverage": 10.832,
+          "final_pw_coverage": 13.02058272363908,
+          "recovery_delta": {
+            "2000": 0.0
+          }
+        },
+        "MCP \u2013 2 Failures": {
+          "final_coverage": 10.636,
+          "final_pw_coverage": 13.853549676652216,
+          "recovery_delta": {
+            "2000": 0.0,
+            "6000": 0.0
+          }
+        },
+        "Baseline \u2013 No Failure": {
+          "final_coverage": 10.718,
+          "final_pw_coverage": 13.085128206801523,
+          "recovery_delta": {}
+        },
+        "Baseline \u2013 1 Failure": {
+          "final_coverage": 10.35,
+          "final_pw_coverage": 13.170622707809008,
+          "recovery_delta": {
+            "2000": 0.0
+          }
+        },
+        "Baseline \u2013 2 Failures": {
+          "final_coverage": 10.873999999999999,
+          "final_pw_coverage": 13.990626835224507,
+          "recovery_delta": {
+            "2000": 0.0,
+            "6000": 0.0
+          }
+        }
+      }
+    },
+    "communication_degradation": {
+      "runtime_s": 5.8,
+      "key_metrics": {
+        "reliability_levels": [
+          1.0,
+          0.8,
+          0.6,
+          0.4,
+          0.2
+        ],
+        "mcp_coverage": [
+          10.95,
+          11.540000000000001,
+          10.662,
+          11.754,
+          11.208000000000002
+        ],
+        "baseline_coverage": [
+          11.111999999999998,
+          11.112,
+          10.832,
+          10.972000000000001,
+          11.002
+        ]
+      }
+    },
+    "scalability": {
+      "runtime_s": 6.5,
+      "key_metrics": {
+        "swarm_sizes": [
+          3,
+          5,
+          7,
+          10
+        ],
+        "mcp_coverage": [
+          8.388000000000002,
+          13.482,
+          18.535999999999998,
+          24.220000000000002
+        ],
+        "baseline_coverage": [
+          8.680000000000001,
+          13.504000000000001,
+          19.91,
+          25.330000000000002
+        ],
+        "agg_times_ms": [
+          0.02052700000003682,
+          0.0333416499999295,
+          0.044783200000342305,
+          0.06280634999917822
+        ]
+      }
+    }
+  },
+  "total_runtime_s": 16.4
+}

@@ -63,6 +63,12 @@ class SwarmEnvironment(gym.Env):
             "collision_count": 0,
             "mission_success": False
         }
+
+        # Failure injection tracking
+        self.failed_uav_ids: set = set()
+
+        # Communication reliability (1.0 = perfect, 0.0 = no communication)
+        self.comm_reliability: float = 1.0
     
     def _initialize_uavs(self):
         """Initialize UAVs with random starting positions."""
@@ -143,8 +149,16 @@ class SwarmEnvironment(gym.Env):
         """Update MCP server with current UAV states."""
         if not self.mcp_connected:
             return
-        
+
+        import random as _random
         for uav in self.uavs:
+            # Simulate communication packet loss based on comm_reliability
+            if self.comm_reliability < 1.0 and _random.random() > self.comm_reliability:
+                continue  # Drop this packet
+
+            # Failed UAVs do not send updates
+            if uav.uav_id in self.failed_uav_ids:
+                continue
             # SLAM integration: Detect nearby obstacles
             obstacles_in_range = self.scenario.get_obstacles_in_range(
                 uav.state.x, uav.state.y, uav.sensor_range
@@ -253,17 +267,23 @@ class SwarmEnvironment(gym.Env):
     def _update_environment(self):
         """Update environment state."""
         dt = self.config.time_step
-        
+
         # Update UAVs
         for uav in self.uavs:
+            # Skip failed UAVs — they stop moving and sensing
+            if uav.uav_id in self.failed_uav_ids:
+                continue
+
             uav.update_physics(dt)
             uav.update_battery(dt)
-            
+
             # Add coverage to scenario
             if uav.state.status == "active":
+                # coverage_amount=1.0: a single UAV pass fully surveys the cell
+                # (one aerial observation is sufficient for disaster reconnaissance)
                 self.scenario.add_coverage(
-                    uav.state.x, uav.state.y, 
-                    uav.sensor_range, 0.1
+                    uav.state.x, uav.state.y,
+                    uav.sensor_range, 1.0
                 )
         
         # Update disaster scenario
@@ -387,7 +407,11 @@ class SwarmEnvironment(gym.Env):
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
         """Reset the environment."""
         super().reset(seed=seed)
-        
+
+        # Seed numpy global RNG for reproducible UAV start positions
+        if seed is not None:
+            np.random.seed(seed)
+
         # Reset UAVs
         for i, uav in enumerate(self.uavs):
             x = np.random.uniform(50, self.config.environment_config.width - 50)
@@ -402,7 +426,10 @@ class SwarmEnvironment(gym.Env):
         self.current_step = 0
         self.episode_length = 0
         self.episode_rewards = []
-        
+
+        # Clear any injected failures
+        self.failed_uav_ids.clear()
+
         # Reset performance metrics
         self.performance_metrics = {
             "coverage_percentage": [],
@@ -437,6 +464,36 @@ class SwarmEnvironment(gym.Env):
         """Start MCP connection."""
         await self._connect_mcp()
     
+    def inject_failure(self, uav_index: int):
+        """Simulate a UAV hardware failure mid-mission.
+
+        The failed UAV stops moving, stops covering area, and stops
+        sending MCP context updates. MCP-coordinated agents will detect
+        the resulting coverage gap through the shared coverage map and
+        naturally redistribute their paths to fill it.
+
+        Args:
+            uav_index: Index of the UAV to fail (0-based).
+        """
+        if 0 <= uav_index < len(self.uavs):
+            uav = self.uavs[uav_index]
+            uav.state.status = "emergency"
+            uav.state.battery = 0.0
+            uav.state.vx = 0.0
+            uav.state.vy = 0.0
+            uav.state.vz = 0.0
+            self.failed_uav_ids.add(uav.uav_id)
+            logger.warning(f"[FAILURE INJECTED] UAV {uav.uav_id} ({uav_index}) has failed.")
+
+    def set_comm_reliability(self, reliability: float):
+        """Set the communication reliability (packet delivery probability).
+
+        Args:
+            reliability: Float in [0.0, 1.0]. 1.0 = perfect comms, 0.0 = no comms.
+        """
+        self.comm_reliability = float(np.clip(reliability, 0.0, 1.0))
+        logger.info(f"Communication reliability set to {self.comm_reliability:.1%}")
+
     def get_environment_info(self) -> Dict[str, Any]:
         """Get information about the environment."""
         return {

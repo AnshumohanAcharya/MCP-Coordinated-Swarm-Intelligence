@@ -1,66 +1,104 @@
 # Makefile for MCP-Coordinated Swarm Intelligence
 
-.PHONY: help install server simulate train experiment dashboard dashboard-install test clean
+.PHONY: help install venv server simulate train experiment \
+        dashboard-install dashboard test clean \
+        review3-quick review3-full rl-compare slam-demo results \
+        final-review final-review-quick gps-denied-test train-agents
 
 # Variables
-VENV = venv
-PYTHON = $(VENV)/bin/python3
-PIP = $(VENV)/bin/pip
-NPM = npm
-CONFIG_DIR = config
-LOGS_DIR = logs
-SAVED_MODELS_DIR = saved_models
-RESULTS_DIR = results
+VENV          = venv
+PYTHON        = $(shell [ -f $(VENV)/bin/python3 ] && echo $(VENV)/bin/python3 || echo python3)
+PIP           = $(shell [ -f $(VENV)/bin/pip ] && echo $(VENV)/bin/pip || echo pip3)
+NPM           = npm
+CONFIG_DIR    = config
+LOGS_DIR      = logs
+SAVED_MODELS  = saved_models
+RESULTS_DIR   = results
 
-# Check for npm availability
-NPM_EXISTS := $(shell command -v $(NPM) 2> /dev/null)
+# Node
+NPM_EXISTS := $(shell command -v $(NPM) 2>/dev/null)
 
-# Check if venv exists, otherwise fallback to system python for venv creation
+# Venv bootstrap
 ifeq ($(wildcard $(VENV)/bin/python3),)
     PYTHON_VENV_GEN = python3
 else
     PYTHON_VENV_GEN = $(PYTHON)
 endif
 
-# Default target
+# ─── Help ────────────────────────────────────────────────────────────────────
 help:
-	@echo "MCP-Coordinated Swarm Intelligence - Available Commands:"
-	@echo "  venv               Create a Python virtual environment"
-	@echo "  install            Install dependencies (Python and optionally Dashboard)"
-	@echo "  server             Start the MCP (Model Context Protocol) Server"
-	@echo "  simulate           Run the simulation (use HEADLESS=true for no GUI)"
-	@echo "  train              Train RL agents (use EPISODES=1000 to set duration)"
-	@echo "  experiment         Run baseline comparison experiments"
-	@echo "  dashboard-install  Install web dashboard dependencies"
-	@echo "  dashboard          Start the web dashboard (Backend & Frontend)"
-	@echo "  test               Run all unit tests"
-	@echo "  clean              Remove logs, saved models, and results"
 	@echo ""
-	@echo "Review III Targets:"
-	@echo "  review3-quick      Quick demo for Review III (5-10 min)"
-	@echo "  review3-full       Full demo for Review III (30-60 min)"
-	@echo "  rl-compare         Compare RL algorithms (PPO, SAC, TD3, A2C, DQN)"
-	@echo "  slam-demo          Demonstrate SLAM integration"
-	@echo "  results            Open results directory"
+	@echo "MCP-Coordinated Swarm Intelligence — Available Commands"
+	@echo "════════════════════════════════════════════════════════"
+	@echo ""
+	@echo "  Setup"
+	@echo "    venv               Create Python virtual environment"
+	@echo "    install            Install all Python (and optionally dashboard) deps"
+	@echo ""
+	@echo "  Final Review Experiments  <-- Main thesis experiments"
+	@echo "    final-review-quick Run quick demo (5 episodes each, ~1-2 min)"
+	@echo "    final-review       Run full publication-quality demo (20/15/12 ep)"
+	@echo "    gps-denied-test    Run full demo in GPS-denied / SLAM mode"
+	@echo ""
+	@echo "  Training"
+	@echo "    train-agents       Quick PPO warm-up (200 episodes, shows pipeline)"
+	@echo "    train              Full RL training (set EPISODES=N, default 1000)"
+	@echo ""
+	@echo "  Review III (historical)"
+	@echo "    review3-quick      Quick Review III demo"
+	@echo "    review3-full       Full Review III demo"
+	@echo "    rl-compare         Compare RL algorithms (PPO/SAC/TD3/A2C/DQN)"
+	@echo "    slam-demo          SLAM integration demo"
+	@echo ""
+	@echo "  Utilities"
+	@echo "    experiment         Baseline comparison (original)"
+	@echo "    server             Start MCP server"
+	@echo "    simulate           Run simulation GUI (HEADLESS=true for no GUI)"
+	@echo "    dashboard-install  Install web dashboard npm dependencies"
+	@echo "    dashboard          Start web dashboard (backend + frontend)"
+	@echo "    test               Run all unit tests"
+	@echo "    results            Open results directory"
+	@echo "    clean              Remove logs, models, and results"
+	@echo ""
 
+# ─── Environment ─────────────────────────────────────────────────────────────
 venv:
 	@echo "Creating virtual environment..."
 	python3 -m venv $(VENV)
-	@echo "Virtual environment created. Please run 'source $(VENV)/bin/activate' in your shell."
+	@echo "Done.  Run: source $(VENV)/bin/activate"
 
 install:
-	@if [ ! -d "$(VENV)" ]; then \
-		$(MAKE) venv; \
-	fi
+	@[ -d "$(VENV)" ] || $(MAKE) venv
 	@echo "Installing Python dependencies..."
 	$(PIP) install -r requirements.txt
 	@if [ -z "$(NPM_EXISTS)" ]; then \
-		echo "Warning: npm not found. Skipping web dashboard installation."; \
-		echo "Please install Node.js and npm to use the web dashboard."; \
+		echo "Warning: npm not found — skipping dashboard install."; \
 	else \
 		$(MAKE) dashboard-install; \
 	fi
 
+# ─── Final Review Experiments ─────────────────────────────────────────────────
+final-review-quick:
+	@echo "Running Final Review quick demo..."
+	$(PYTHON) run_final_review_demo.py --mode quick
+
+final-review:
+	@echo "Running Final Review full demo (publication quality)..."
+	$(PYTHON) run_final_review_demo.py --mode full
+
+gps-denied-test:
+	@echo "Running Final Review in GPS-denied / SLAM mode..."
+	$(PYTHON) run_final_review_demo.py --mode full --gps-denied
+
+# ─── Training ────────────────────────────────────────────────────────────────
+train-agents:
+	@echo "Quick PPO warm-up (200 episodes -- shows the training pipeline)..."
+	$(PYTHON) -m rl_agents.train --episodes 200
+
+train:
+	$(PYTHON) -m rl_agents.train --episodes $(or $(EPISODES),1000) $(if $(CONFIG),--config $(CONFIG))
+
+# ─── Core simulation ─────────────────────────────────────────────────────────
 server:
 	$(PYTHON) -m mcp_server.server
 
@@ -71,59 +109,52 @@ simulate:
 		$(PYTHON) -m simulation.main; \
 	fi
 
-train:
-	$(PYTHON) -m rl_agents.train --episodes $(or $(EPISODES), 1000) $(if $(CONFIG), --config $(CONFIG))
-
 experiment:
 	$(PYTHON) -m experiments.baseline_comparison
 
-dashboard-install:
-	@if [ -z "$(NPM_EXISTS)" ]; then \
-		echo "Error: npm is not installed. Cannot install dashboard dependencies."; \
-		exit 1; \
-	fi
-	cd web_dashboard && $(NPM) install
-
-dashboard:
-	@if [ -z "$(NPM_EXISTS)" ]; then \
-		echo "Error: npm is not installed. Cannot start dashboard."; \
-		exit 1; \
-	fi
-	@echo "Starting web dashboard..."
-	@echo "Starting server and client concurrently..."
-	cd web_dashboard && $(NPM) start
-
-test:
-	$(PYTHON) -m pytest tests/
-
-# Review III Targets
+# ─── Review III (historical) ─────────────────────────────────────────────────
 review3-quick:
-	@echo "Running Review III Quick Demo (5-10 minutes)..."
+	@echo "Running Review III quick demo..."
 	$(PYTHON) run_review_iii_demo.py --quick
 
 review3-full:
-	@echo "Running Review III Full Demo (30-60 minutes)..."
+	@echo "Running Review III full demo..."
 	$(PYTHON) run_review_iii_demo.py --full
 
 rl-compare:
-	@echo "Running RL Algorithm Comparison..."
+	@echo "Running RL algorithm comparison..."
 	$(PYTHON) experiments/rl_comparison.py --episodes 100 --num_uavs 3
 
 slam-demo:
-	@echo "Running SLAM Integration Demo..."
+	@echo "Running SLAM integration demo..."
 	$(PYTHON) experiments/slam_comparison.py --episodes 20 --num_uavs 3
 
+# ─── Dashboard ───────────────────────────────────────────────────────────────
+dashboard-install:
+	@[ -n "$(NPM_EXISTS)" ] || (echo "Error: npm is not installed."; exit 1)
+	cd web_dashboard && $(NPM) install
+
+dashboard:
+	@[ -n "$(NPM_EXISTS)" ] || (echo "Error: npm is not installed."; exit 1)
+	@echo "Starting web dashboard..."
+	cd web_dashboard && $(NPM) start
+
+# ─── Tests & Utilities ───────────────────────────────────────────────────────
+test:
+	$(PYTHON) -m pytest tests/
+
 results:
-	@echo "Opening results directory..."
-	@if [ -d "results/review_iii" ]; then \
-		open results/review_iii 2>/dev/null || xdg-open results/review_iii 2>/dev/null || echo "Results directory: results/review_iii"; \
+	@if [ -d "$(RESULTS_DIR)/final_review" ]; then \
+		open $(RESULTS_DIR)/final_review 2>/dev/null || \
+		xdg-open $(RESULTS_DIR)/final_review 2>/dev/null || \
+		echo "Results: $(RESULTS_DIR)/final_review"; \
+	elif [ -d "$(RESULTS_DIR)/review_iii" ]; then \
+		open $(RESULTS_DIR)/review_iii 2>/dev/null || \
+		echo "Results: $(RESULTS_DIR)/review_iii"; \
 	else \
-		echo "No results found. Run 'make review3-quick' or 'make review3-full' first."; \
+		echo "No results yet -- run 'make final-review-quick' first."; \
 	fi
 
-
 clean:
-	rm -rf $(LOGS_DIR)/*
-	rm -rf $(SAVED_MODELS_DIR)/*
-	rm -rf $(RESULTS_DIR)/*
+	rm -rf $(LOGS_DIR)/* $(SAVED_MODELS)/* $(RESULTS_DIR)/*
 	@echo "Cleanup complete."

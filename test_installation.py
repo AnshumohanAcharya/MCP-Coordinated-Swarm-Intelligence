@@ -203,23 +203,71 @@ def test_rl_agents():
         traceback.print_exc()
         return False
 
+def test_experiment_agents():
+    """Test exploration agents used for final review experiments."""
+    logger.info("Testing exploration agents (Final Review)...")
+
+    try:
+        from scipy import stats as scipy_stats
+        logger.info("✓ scipy.stats imported (required for paired t-tests)")
+
+        from experiments.exploration_agents import (
+            MCPExplorer, BaselineExplorer,
+            make_mcp_explorers, make_baseline_explorers,
+            get_actions_mcp, get_actions_baseline,
+        )
+        logger.info("✓ Exploration agent classes imported")
+
+        # Smoke-test GPS-denied construction
+        from config.simulation_config import SimulationConfig
+        from simulation.environment import SwarmEnvironment
+        config = SimulationConfig()
+        config.num_uavs = 2
+        config.render = False
+        env = SwarmEnvironment(config)
+        env.reset(seed=42)
+
+        mcp_gps_ok   = make_mcp_explorers(env, gps_denied=True)
+        base_gps_ok  = make_baseline_explorers(env, gps_denied=True)
+        assert len(mcp_gps_ok) == 2
+        assert len(base_gps_ok) == 2
+        assert mcp_gps_ok[0].gps_denied is True
+        assert base_gps_ok[0].gps_denied is True
+        logger.info("✓ GPS-denied explorer construction works")
+
+        # Normal (GPS) construction
+        mcp_normal  = make_mcp_explorers(env, gps_denied=False)
+        base_normal = make_baseline_explorers(env, gps_denied=False)
+        assert mcp_normal[0].gps_denied is False
+        logger.info("✓ Normal-GPS explorer construction works")
+
+        env.close()
+        return True
+
+    except Exception as e:
+        logger.error(f"✗ Exploration agent test failed: {e}")
+        traceback.print_exc()
+        return False
+
+
 def main():
     """Run all tests."""
     logger.info("=" * 60)
     logger.info("MCP-Coordinated Swarm Intelligence Installation Test")
     logger.info("=" * 60)
-    
+
     tests = [
-        ("Import Test", test_imports),
-        ("Configuration Test", test_configuration),
-        ("Simulation Test", test_simulation),
-        ("MCP Server Test", test_mcp_server),
-        ("RL Agents Test", test_rl_agents),
+        ("Import Test",            test_imports),
+        ("Configuration Test",     test_configuration),
+        ("Simulation Test",        test_simulation),
+        ("MCP Server Test",        test_mcp_server),
+        ("RL Agents Test",         test_rl_agents),
+        ("Exploration Agents Test", test_experiment_agents),
     ]
-    
+
     passed = 0
-    total = len(tests)
-    
+    total  = len(tests)
+
     for test_name, test_func in tests:
         logger.info(f"\n--- {test_name} ---")
         try:
@@ -230,18 +278,19 @@ def main():
                 logger.error(f"✗ {test_name} FAILED")
         except Exception as e:
             logger.error(f"✗ {test_name} FAILED with exception: {e}")
-    
+
     logger.info("\n" + "=" * 60)
     logger.info(f"Test Results: {passed}/{total} tests passed")
-    
+
     if passed == total:
-        logger.info("🎉 All tests passed! Installation is successful.")
-        logger.info("\nYou can now run the demo with:")
-        logger.info("  python3 run_demo.py --demo simulation --duration 30")
-        logger.info("  python3 run_demo.py --demo full --duration 60")
+        logger.info("All tests passed!  Installation is successful.")
+        logger.info("\nYou can now run:")
+        logger.info("  make final-review-quick   # quick demo (~1-2 min)")
+        logger.info("  make final-review          # full publication demo")
+        logger.info("  make gps-denied-test       # GPS-denied SLAM mode")
         return 0
     else:
-        logger.error("❌ Some tests failed. Please check the errors above.")
+        logger.error("Some tests failed. Please check the errors above.")
         return 1
 
 if __name__ == "__main__":

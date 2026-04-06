@@ -1,0 +1,214 @@
+{
+  "mcp": [
+    {
+      "num_uavs": 3,
+      "use_mcp": true,
+      "avg_coverage": 8.388000000000002,
+      "std_coverage": 0.6376017565847822,
+      "avg_pw_coverage": 8.039800616694302,
+      "per_ep_final_coverage": [
+        8.92,
+        9.36,
+        8.02,
+        7.93,
+        7.71
+      ],
+      "per_ep_final_pw": [
+        7.40248100770592,
+        8.210783266150735,
+        7.461933560839527,
+        10.602370347256143,
+        6.521434901519189
+      ],
+      "coverage_per_uav": 2.7960000000000007,
+      "avg_step_time_ms": 0.5310798993788467,
+      "context_agg_time_ms": 0.02052700000003682,
+      "mcp_messages_per_step": 6,
+      "p2p_messages_per_step": 6
+    },
+    {
+      "num_uavs": 5,
+      "use_mcp": true,
+      "avg_coverage": 13.482,
+      "std_coverage": 1.0368683619437908,
+      "avg_pw_coverage": 15.351021864689466,
+      "per_ep_final_coverage": [
+        12.950000000000001,
+        13.08,
+        12.04,
+        14.790000000000001,
+        14.549999999999999
+      ],
+      "per_ep_final_pw": [
+        14.877621346473715,
+        12.486832615751247,
+        10.743535905338236,
+        22.27764375965237,
+        16.36947569623176
+      ],
+      "coverage_per_uav": 2.6963999999999997,
+      "avg_step_time_ms": 0.8368454629629775,
+      "context_agg_time_ms": 0.0333416499999295,
+      "mcp_messages_per_step": 10,
+      "p2p_messages_per_step": 20
+    },
+    {
+      "num_uavs": 7,
+      "use_mcp": true,
+      "avg_coverage": 18.535999999999998,
+      "std_coverage": 1.473751675147478,
+      "avg_pw_coverage": 21.114257586668014,
+      "per_ep_final_coverage": [
+        19.470000000000002,
+        19.759999999999998,
+        19.939999999999998,
+        16.46,
+        17.05
+      ],
+      "per_ep_final_pw": [
+        22.44766985041974,
+        17.924875253910496,
+        18.447424874743994,
+        21.391877474446996,
+        25.35944047981884
+      ],
+      "coverage_per_uav": 2.6479999999999997,
+      "avg_step_time_ms": 1.1195100246608507,
+      "context_agg_time_ms": 0.044783200000342305,
+      "mcp_messages_per_step": 14,
+      "p2p_messages_per_step": 42
+    },
+    {
+      "num_uavs": 10,
+      "use_mcp": true,
+      "avg_coverage": 24.220000000000002,
+      "std_coverage": 2.490815127623887,
+      "avg_pw_coverage": 25.09057846110191,
+      "per_ep_final_coverage": [
+        23.68,
+        25.03,
+        25.729999999999997,
+        19.71,
+        26.950000000000003
+      ],
+      "per_ep_final_pw": [
+        25.15784119789663,
+        22.953757955504948,
+        22.937119385500353,
+        21.486923425461494,
+        32.91725034114611
+      ],
+      "coverage_per_uav": 2.422,
+      "avg_step_time_ms": 1.5254418887451744,
+      "context_agg_time_ms": 0.06280634999917822,
+      "mcp_messages_per_step": 20,
+      "p2p_messages_per_step": 90
+    }
+  ],
+  "baseline": [
+    {
+      "num_uavs": 3,
+      "use_mcp": false,
+      "avg_coverage": 8.680000000000001,
+      "std_coverage": 0.9692677648617021,
+      "avg_pw_coverage": 8.552517188541266,
+      "per_ep_final_coverage": [
+        9.39,
+        8.04,
+        8.68,
+        7.2700000000000005,
+        10.02
+      ],
+      "per_ep_final_pw": [
+        7.927914463563002,
+        7.173102931224171,
+        7.904606291701335,
+        10.859399064305553,
+        8.897563191912267
+      ],
+      "coverage_per_uav": 2.893333333333334,
+      "avg_step_time_ms": 0.46715472136951136,
+      "context_agg_time_ms": 0.020920949999414518,
+      "mcp_messages_per_step": 6,
+      "p2p_messages_per_step": 6
+    },
+    {
+      "num_uavs": 5,
+      "use_mcp": false,
+      "avg_coverage": 13.504000000000001,
+      "std_coverage": 0.7519734037850009,
+      "avg_pw_coverage": 15.461487573571521,
+      "per_ep_final_coverage": [
+        13.56,
+        13.08,
+        14.7,
+        13.750000000000002,
+        12.43
+      ],
+      "per_ep_final_pw": [
+        15.583280175117023,
+        12.295962474861891,
+        13.65851057244667,
+        19.299400143708,
+        16.47028450172402
+      ],
+      "coverage_per_uav": 2.7008,
+      "avg_step_time_ms": 0.7173897655677757,
+      "context_agg_time_ms": 0.03332475000012991,
+      "mcp_messages_per_step": 10,
+      "p2p_messages_per_step": 20
+    },
+    {
+      "num_uavs": 7,
+      "use_mcp": false,
+      "avg_coverage": 19.91,
+      "std_coverage": 1.1435908359199103,
+      "avg_pw_coverage": 22.78237989131885,
+      "per_ep_final_coverage": [
+        21.73,
+        20.419999999999998,
+        18.39,
+        19.1,
+        19.91
+      ],
+      "per_ep_final_pw": [
+        27.02788688417292,
+        18.775097144828695,
+        16.303636567592047,
+        27.23113745528264,
+        24.574141404717956
+      ],
+      "coverage_per_uav": 2.8442857142857143,
+      "avg_step_time_ms": 0.931200994394632,
+      "context_agg_time_ms": 0.045049999999857704,
+      "mcp_messages_per_step": 14,
+      "p2p_messages_per_step": 42
+    },
+    {
+      "num_uavs": 10,
+      "use_mcp": false,
+      "avg_coverage": 25.330000000000002,
+      "std_coverage": 1.9967072895144145,
+      "avg_pw_coverage": 27.356166768244957,
+      "per_ep_final_coverage": [
+        26.43,
+        27.52,
+        24.990000000000002,
+        21.68,
+        26.029999999999998
+      ],
+      "per_ep_final_pw": [
+        29.51191703664222,
+        25.102233195215078,
+        22.422510630976085,
+        28.600982600543816,
+        31.143190377847596
+      ],
+      "coverage_per_uav": 2.5330000000000004,
+      "avg_step_time_ms": 1.2814080234467042,
+      "context_agg_time_ms": 0.057539599999678614,
+      "mcp_messages_per_step": 20,
+      "p2p_messages_per_step": 90
+    }
+  ]
+}
