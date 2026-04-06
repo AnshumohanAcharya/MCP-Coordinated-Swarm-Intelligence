@@ -1,235 +1,146 @@
-# MCP-Coordinated Swarm Intelligence Architecture
+# System Architecture
 
-## Overview
+## MCP-Coordinated Swarm Intelligence
 
-The MCP-Coordinated Swarm Intelligence system is designed to address the "Context Vacuum" problem in multi-UAV coordination by introducing the Model Context Protocol (MCP) as a lightweight, standardized communication layer for shared situational awareness.
+---
 
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    MCP-Coordinated Swarm Intelligence           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
-│  │   UAV-1     │    │   UAV-2     │    │   UAV-N     │         │
-│  │             │    │             │    │             │         │
-│  │ ┌─────────┐ │    │ ┌─────────┐ │    │ ┌─────────┐ │         │
-│  │ │ RL Agent│ │    │ │ RL Agent│ │    │ │ RL Agent│ │         │
-│  │ │ (PPO)   │ │    │ │ (PPO)   │ │    │ │ (PPO)   │ │         │
-│  │ └─────────┘ │    │ └─────────┘ │    │ └─────────┘ │         │
-│  │             │    │             │    │             │         │
-│  │ ┌─────────┐ │    │ ┌─────────┐ │    │ ┌─────────┐ │         │
-│  │ │MCP Client│ │    │ │MCP Client│ │    │ │MCP Client│ │         │
-│  │ └─────────┘ │    │ └─────────┘ │    │ └─────────┘ │         │
-│  └─────────────┘    └─────────────┘    └─────────────┘         │
-│           │                  │                  │               │
-│           └──────────────────┼──────────────────┘               │
-│                              │                                  │
-│                    ┌─────────▼─────────┐                        │
-│                    │    MCP Server     │                        │
-│                    │                   │                        │
-│                    │ ┌───────────────┐ │                        │
-│                    │ │Context Manager│ │                        │
-│                    │ └───────────────┘ │                        │
-│                    │ ┌───────────────┐ │                        │
-│                    │ │Message Protocol│ │                        │
-│                    │ └───────────────┘ │                        │
-│                    └─────────┬─────────┘                        │
-│                              │                                  │
-│                    ┌─────────▼─────────┐                        │
-│                    │  PyGame Simulation│                        │
-│                    │                   │                        │
-│                    │ ┌───────────────┐ │                        │
-│                    │ │Disaster Env.  │ │                        │
-│                    │ └───────────────┘ │                        │
-│                    │ ┌───────────────┐ │                        │
-│                    │ │UAV Physics    │ │                        │
-│                    │ └───────────────┘ │                        │
-│                    │ ┌───────────────┐ │                        │
-│                    │ │Visualization  │ │                        │
-│                    │ └───────────────┘ │                        │
-│                    └───────────────────┘                        │
-│                              │                                  │
-│                    ┌─────────▼─────────┐                        │
-│                    │  Web Dashboard    │                        │
-│                    │                   │                        │
-│                    │ ┌───────────────┐ │                        │
-│                    │ │React Frontend │ │                        │
-│                    │ └───────────────┘ │                        │
-│                    │ ┌───────────────┐ │                        │
-│                    │ │Node.js Backend│ │                        │
-│                    │ └───────────────┘ │                        │
-│                    └───────────────────┘                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Core Components
-
-### 1. Model Context Protocol (MCP) Server
-
-The MCP server serves as the central innovation, providing a lightweight, standardized communication layer for shared situational awareness.
-
-**Key Features:**
-- **Context Aggregation**: Collects and processes data from all UAVs
-- **Real-time Broadcasting**: Distributes context updates to all connected agents
-- **Message Protocol**: Handles serialization, routing, and delivery of context messages
-- **Context Management**: Maintains historical context and manages data retention
-
-**Components:**
-- `mcp_server/server.py`: Main MCP server implementation
-- `mcp_server/context_manager.py`: Context aggregation and management
-- `mcp_server/message_protocol.py`: Message handling and routing
-
-### 2. Reinforcement Learning Agents
-
-Each UAV is controlled by a Reinforcement Learning agent that makes decentralized decisions based on local observations and shared context.
-
-**Agent Types:**
-- **Baseline PPO Agent**: Standard PPO without context awareness
-- **Context-Aware PPO Agent**: PPO with MCP context integration
-
-**Key Features:**
-- **Decentralized Decision Making**: Each agent operates independently
-- **Context Integration**: Incorporates shared context into decision making
-- **Adaptive Learning**: Agents learn from experience and context
-- **Multi-objective Optimization**: Balances coverage, battery, and communication
-
-### 3. Simulation Environment
-
-A PyGame-based simulation environment that models the disaster scenario and UAV physics.
-
-**Components:**
-- **Disaster Scenario**: Models disaster zones, obstacles, and target areas
-- **UAV Physics**: Realistic UAV movement and battery consumption
-- **Environment Dynamics**: Wind, weather, and emergency events
-- **Visualization**: Real-time 3D visualization of the swarm
-
-**Key Features:**
-- **Realistic Physics**: Accurate UAV movement and energy consumption
-- **Dynamic Environment**: Changing conditions and emergency events
-- **Collision Detection**: Obstacle avoidance and safety constraints
-- **Performance Metrics**: Coverage, efficiency, and reliability tracking
-
-### 4. Web Dashboard
-
-A React.js-based dashboard for real-time monitoring and visualization.
-
-**Features:**
-- **Real-time Monitoring**: Live updates of swarm status
-- **Performance Analytics**: Charts and metrics visualization
-- **Simulation Control**: Start, stop, and configure simulations
-- **Agent Management**: Monitor individual agent performance
-
-## Data Flow
-
-### 1. Context Update Flow
+## High-Level Overview
 
 ```
-UAV Agent → Sensor Data → MCP Client → MCP Server → Context Manager → Broadcast → All Agents
+┌──────────────────────────────────────────────────────────────────────┐
+│                        Simulation Layer                              │
+│                                                                      │
+│   ┌───────────────┐  ┌───────────────┐  ┌───────────────────────┐   │
+│   │  UAV Agent 1  │  │  UAV Agent 2  │  │     UAV Agent N       │   │
+│   │ MCPExplorer   │  │ MCPExplorer   │  │    MCPExplorer        │   │
+│   │ (sector i)    │  │ (sector i+1)  │  │    (sector N)        │   │
+│   └──────┬────────┘  └──────┬────────┘  └──────────┬────────────┘   │
+│          │                  │                       │                │
+│          └──────────────────┼───────────────────────┘                │
+│                             │  MCP broadcast (one msg/step/UAV)      │
+│                ┌────────────▼────────────┐                           │
+│                │      MCP Server         │                           │
+│                │  context_manager.py     │      O(n) complexity      │
+│                │  message_protocol.py   │                           │
+│                └────────────┬────────────┘                           │
+│                             │                                        │
+│                ┌────────────▼────────────────────────────────────┐   │
+│                │          SwarmEnvironment (Gymnasium)           │   │
+│                │                                                  │   │
+│                │  • 100×100 grid, 10 m/cell, 1 km × 1 km        │   │
+│                │  • Priority-weighted disaster zones             │   │
+│                │  • UAV physics (speed=15 m/s, sensor=50 m)     │   │
+│                │  • Failure injection, comm degradation          │   │
+│                └──────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Data Collection**: UAV agents collect sensor data (position, battery, etc.)
-2. **Context Transmission**: Data is sent to MCP server via WebSocket
-3. **Context Aggregation**: Server processes and aggregates data from all UAVs
-4. **Context Broadcasting**: Aggregated context is broadcast to all agents
-5. **Context Integration**: Agents incorporate context into their decision making
+---
 
-### 2. Decision Making Flow
+## Component Descriptions
+
+### 1. SwarmEnvironment (`simulation/environment.py`)
+
+Gymnasium-compatible environment managing:
+
+- **Grid**: 100×100 cells, each 10 m × 10 m
+- **UAV registration**: creates N `UAV` objects from `SimulationConfig`
+- **Step loop**: calls each UAV's physics update, then scores the updated coverage grid
+- **Coverage scoring**: `coverage_percentage` (raw) + `priority_weighted_coverage` (weighted by zone severity)
+- **Failure injection**: `env.inject_failure(uav_idx)` marks a UAV as dead
+- **Seed support**: `env.reset(seed=N)` for reproducible paired comparisons
+
+### 2. DisasterScenario (`simulation/disaster_scenario.py`)
+
+Builds the priority map from real and parameterised data:
+
+- **Wildfire zones**: 3–5 clustered high-severity zones + scattered spread cells
+- **Flood zones**: derived from `Visakhapatnam_UTide_full2024_hourly_IST.csv` tidal heights
+- **Severity grid**: values in [0, 1]; `priority_weighted_coverage = Σ(coverage_ij × severity_ij) / Σ severity_ij`
+- **Caching**: `_DATASET_CACHE` singleton prevents regenerating the grid every episode
+
+### 3. MCPExplorer / BaselineExplorer (`experiments/exploration_agents.py`)
+
+Rule-based agents for controlled coordination experiments.
+
+**BaselineExplorer** — greedy independent:
+- Finds the nearest uncovered cell in its sensor range
+- Acts on local observation only (no shared context)
+
+**MCPExplorer** — sector-partitioned with shared context:
+- UAVs are ranked south-to-north; each gets a horizontal sector `[y_lo, y_hi)`
+- Within its sector, follows same greedy logic as baseline
+- When a sector UAV fails, neighbouring MCPExplorers expand to fill the gap via MCP context
+- **GPS-denied mode** (`gps_denied=True`): position used for targeting is perturbed by decaying Gaussian noise (8 m → 1 m over 5 000 steps)
+
+### 4. MCP Server (`mcp_server/`)
+
+Lightweight async WebSocket server:
+
+- `server.py` — accepts connections, routes messages
+- `context_manager.py` — aggregates UAV sensor readings into a shared coverage grid;
+  broadcasts the merged grid to all connected agents
+- `message_protocol.py` — defines `ContextMessage` dataclass (type, sender, data payload)
+
+### 5. RL Agents (`rl_agents/`)
+
+Used in Reviews I–III. Not used in the final rule-based comparison (see reasoning
+in `README.md §2`), but available for training experiments.
+
+- `ppo_agent.py` — custom PPO with combined advantage (coverage + coordination)
+- `advanced_agents.py` — SAC, TD3, A2C, DDPG via `stable-baselines3`
+- `train.py` — entry point; `make train-agents` for a 200-episode warm-up
+
+---
+
+## Data Flow (one simulation step)
 
 ```
-Local State + Context → Neural Network → Action → Environment → Reward → Learning
+for each UAV agent:
+    1. Agent reads local observation from env
+    2. (GPS-denied) Position is perturbed by SLAM noise sigma(t)
+    3. Agent computes target cell and action vector
+    4. MCPExplorer: broadcasts coverage update to MCP Server
+    5. MCP Server: aggregates, rebroadcasts shared grid to all agents
+
+env.step(all_actions):
+    6. UAV physics update (velocity, battery drain, sensor sweep)
+    7. Coverage grid update: cells within sensor_range marked covered
+    8. Compute reward = raw_coverage * severity_weight - overlap_penalty
+    9. Return obs, reward, done, info (includes priority_weighted_coverage)
 ```
 
-1. **State Observation**: Agent observes local state and receives context
-2. **Action Selection**: Neural network selects action based on state and context
-3. **Environment Interaction**: Action is executed in the simulation
-4. **Reward Calculation**: Environment calculates reward based on performance
-5. **Learning Update**: Agent updates its policy based on experience
+---
 
-## Key Innovations
+## Configuration
 
-### 1. Context-Aware Decision Making
+All physics and experiment parameters live in `config/simulation_config.py`:
 
-Unlike traditional approaches that rely solely on local observations, our agents incorporate shared context information:
+| Parameter | Value | Notes |
+|---|---|---|
+| Grid size | 100×100 | 10 m/cell |
+| UAV max speed | 15.0 m/s | |
+| Sensor range | 50.0 m | 5-cell radius |
+| Battery drain rate | 0.0001/s | ~10% over 10 000-step mission |
+| Steps per episode | 10 000 | |
+| Coverage threshold | 0.5 | fraction to mark a cell surveyed |
+| Coverage amount | 1.0 | per-step coverage increment |
 
-- **Coverage Awareness**: Agents know which areas have been covered by other UAVs
-- **Battery Status**: Agents are aware of the battery levels of other UAVs
-- **Communication Network**: Agents understand the communication topology
-- **Environmental Conditions**: Agents share information about weather and obstacles
+---
 
-### 2. Lightweight Communication Protocol
+## Key Design Decisions
 
-The MCP provides efficient, standardized communication:
+1. **Rule-based comparison agents** — isolate the MCP coordination variable exactly;
+   any coverage difference is attributable only to context sharing, not policy quality.
 
-- **Minimal Overhead**: Lightweight message format reduces communication costs
-- **Standardized Interface**: Consistent API for all context types
-- **Real-time Updates**: Low-latency context distribution
-- **Scalable Architecture**: Supports varying numbers of UAVs
+2. **Paired trials with fixed seeds** — each episode uses `seed = BASE_SEED + ep`;
+   both MCP and Baseline arms run the same environment realisations, enabling a
+   paired t-test with maximum statistical power.
 
-### 3. Emergent Coordination
+3. **O(n) message complexity** — each UAV emits exactly one broadcast per step;
+   the MCP server aggregates in a single pass. Experiment 3 verifies this empirically
+   by measuring context aggregation time across swarm sizes 3–10.
 
-The system enables emergent coordination without centralized control:
-
-- **Decentralized Architecture**: No single point of failure
-- **Emergent Behavior**: Complex coordination emerges from simple rules
-- **Adaptive Response**: System adapts to changing conditions
-- **Fault Tolerance**: Individual UAV failures don't compromise the swarm
-
-## Performance Metrics
-
-### 1. Coverage Efficiency
-- **Area Coverage**: Percentage of target area covered
-- **Coverage Quality**: Uniformity and completeness of coverage
-- **Time to Coverage**: Speed of achieving target coverage
-
-### 2. Resource Efficiency
-- **Battery Usage**: Energy consumption and battery life
-- **Communication Overhead**: Network usage and efficiency
-- **Computational Cost**: Processing requirements per agent
-
-### 3. Coordination Quality
-- **Collision Avoidance**: Safety and obstacle avoidance
-- **Task Distribution**: Load balancing across UAVs
-- **Mission Success**: Completion rate of assigned tasks
-
-### 4. Adaptability
-- **Dynamic Response**: Ability to adapt to changing conditions
-- **Fault Tolerance**: Performance under partial failures
-- **Scalability**: Performance with varying swarm sizes
-
-## Configuration and Deployment
-
-### 1. Simulation Configuration
-- **Environment Parameters**: Map size, obstacles, targets
-- **UAV Specifications**: Speed, battery, sensors, communication
-- **RL Hyperparameters**: Learning rate, batch size, network architecture
-
-### 2. MCP Configuration
-- **Server Settings**: Host, port, connection limits
-- **Context Types**: Which information to track and share
-- **Update Frequency**: How often to broadcast context updates
-
-### 3. Deployment Options
-- **Local Simulation**: Run on single machine for development
-- **Distributed Simulation**: Deploy across multiple machines
-- **Cloud Deployment**: Scale using cloud infrastructure
-
-## Future Extensions
-
-### 1. Advanced Context Types
-- **Predictive Context**: Forecast future conditions
-- **Semantic Context**: High-level mission understanding
-- **Temporal Context**: Historical patterns and trends
-
-### 2. Enhanced Learning
-- **Multi-Agent Learning**: Collaborative learning algorithms
-- **Transfer Learning**: Knowledge transfer between scenarios
-- **Meta-Learning**: Learning to learn new tasks quickly
-
-### 3. Real-World Integration
-- **Hardware Integration**: Connect to real UAV hardware
-- **Sensor Fusion**: Integrate multiple sensor types
-- **Safety Systems**: Enhanced safety and fail-safe mechanisms
-
-This architecture provides a robust, scalable foundation for intelligent UAV swarm coordination that addresses the fundamental challenges of multi-agent systems while maintaining the benefits of decentralized control.
+4. **Priority-weighted coverage** — raw coverage rewards covering low-value open
+   land equally with high-severity fire zones. The weighted metric directly measures
+   mission effectiveness, not just area surveyed.

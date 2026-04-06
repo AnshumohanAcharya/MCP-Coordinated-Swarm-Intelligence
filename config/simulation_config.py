@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 
 import yaml
 
+STEPS_PER_EPISODE  = 10_000
 
 @dataclass
 class UAVConfig:
@@ -56,7 +57,7 @@ class RLConfig:
     target_update_frequency: int = 100
     training_frequency: int = 4
     max_episode_length: int = 5000
-    max_steps_per_episode: int = 500  # Maximum steps per episode for training
+    max_steps_per_episode: int = STEPS_PER_EPISODE  # Maximum steps per episode for training
     total_timesteps: int = 1000000
 
 
